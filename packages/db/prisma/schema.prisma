@@ -1,0 +1,292 @@
+// ════════════════════════════════════════════════════════════════
+//  Luciano Freios — Schema de dados (Prisma + PostgreSQL/Supabase)
+//  FOCO: controle puro de estoque — ENTRADA e SAÍDA.
+//   - Sem compras/vendas comerciais (removido).
+//   - `movimentacoes_estoque` = ledger imutável (fonte da verdade do log).
+//   - `produtos.estoqueAtual` = cache atualizado na mesma transação.
+//   - Saída pode referenciar uma OS (peça que foi pro conserto).
+// ════════════════════════════════════════════════════════════════
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ───────────────────────── Pessoas & Acesso ─────────────────────────
+// Usuário  = quem LOGA no sistema (~3): papel de acesso + vínculo de auth.
+// Funcionário = quem TRABALHA na oficina (~10): pessoa/equipe, sem login.
+// Um usuário PODE apontar para um funcionário (ex.: Marina é os dois).
+
+enum PapelUsuario {
+  ADMIN
+  ALMOXARIFADO
+}
+
+model Usuario {
+  id            String       @id @default(uuid())
+  authUserId    String       @unique // auth.users.id (Supabase Auth)
+  nome          String
+  email         String?      @unique
+  papel         PapelUsuario
+  ativo         Boolean      @default(true)
+  funcionarioId String?      @unique
+  funcionario   Funcionario? @relation(fields: [funcionarioId], references: [id])
+  criadoEm      DateTime     @default(now())
+
+  movimentacoes         MovimentacaoEstoque[]
+  emprestimosRetirados  Emprestimo[]           @relation("EmprestimosRetirada")
+  emprestimosFechados   Emprestimo[]           @relation("EmprestimosFechamento")
+
+  @@index([papel, ativo])
+  @@map("usuarios")
+}
+
+model Funcionario {
+  id       String   @id @default(uuid())
+  nome     String
+  cpf      String   @unique
+  email    String?
+  cargo    String? // texto livre: "Mecânico", "Secretária", "Proprietário"…
+  ativo    Boolean  @default(true)
+  criadoEm DateTime @default(now())
+
+  usuario            Usuario?
+  ordensComoMecanico OrdemServico[]     @relation("MecanicoResponsavel")
+  itensExecutados    ItemOrdemServico[]
+  emprestimos        Emprestimo[]
+
+  @@index([ativo])
+  @@map("funcionarios")
+}
+
+// ───────────────────────── Clientes & Frota ─────────────────────────
+
+enum TipoPessoa {
+  PF
+  PJ
+}
+
+model Cliente {
+  id           String     @id @default(uuid())
+  tipo         TipoPessoa
+  razaoSocial  String
+  nomeFantasia String?
+  cnpjCpf      String     @unique
+  inscEstadual String?
+  email        String?
+  telefone     String?
+  logradouro   String?
+  numero       String?
+  bairro       String?
+  municipio    String?
+  uf           String?    @db.Char(2)
+  cep          String?
+  criadoEm     DateTime   @default(now())
+
+  veiculos Veiculo[]
+  ordens   OrdemServico[]
+
+  @@index([razaoSocial])
+  @@map("clientes")
+}
+
+model Veiculo {
+  id        String   @id @default(uuid())
+  placa     String   @unique
+  modelo    String
+  marca     String?
+  anoFab    Int?
+  chassi    String?  @unique
+  renavam   String?
+  tipo      String?
+  kmAtual   Int?
+  clienteId String
+  cliente   Cliente  @relation(fields: [clienteId], references: [id])
+  criadoEm  DateTime @default(now())
+
+  ordens OrdemServico[]
+
+  @@index([clienteId])
+  @@map("veiculos")
+}
+
+// ───────────────────────── Almoxarifado ─────────────────────────
+
+// RIGIDO       = peça rastreada 1 a 1.
+// ESTOQUE_CHAO = consumível sem dono (parafuso, fluido) — reconciliado por contagem.
+enum TipoControleEstoque {
+  RIGIDO
+  ESTOQUE_CHAO
+}
+
+// PECA       = consumível, baixa definitiva (SAIDA).
+// FERRAMENTA = retornável — sai por EMPRESTIMO (vinculado a um funcionário) e volta por DEVOLUCAO.
+enum CategoriaProduto {
+  PECA
+  FERRAMENTA
+}
+
+model Produto {
+  id            String              @id @default(uuid())
+  sku           String              @unique
+  descricao     String
+  ncm           String?
+  unidade       String              @default("UN")
+  precoCusto    Decimal             @db.Decimal(12, 2)
+  precoVenda    Decimal             @db.Decimal(12, 2)
+  controle      TipoControleEstoque @default(RIGIDO)
+  categoria     CategoriaProduto    @default(PECA)
+  // Cache materializado — atualizado SEMPRE dentro da transação de movimentação.
+  estoqueAtual  Int                 @default(0)
+  estoqueMinimo Int                 @default(0)
+  localizacao   String?
+  ativo         Boolean             @default(true)
+  criadoEm      DateTime            @default(now())
+
+  movimentacoes MovimentacaoEstoque[]
+  itensOS       ItemOrdemServico[]
+  emprestimos   Emprestimo[]
+
+  @@index([descricao])
+  @@index([estoqueAtual, estoqueMinimo])
+  @@index([categoria])
+  @@map("produtos")
+}
+
+// O coração do sistema: ENTRADA / SAÍDA / AJUSTE + EMPRESTIMO / DEVOLUCAO (ferramentaria).
+enum TipoMovimentacao {
+  ENTRADA    // peça entrou no estoque (recebimento, devolução de fornecedor)
+  SAIDA      // peça saiu do estoque em definitivo (consumo/OS) OU perda de ferramenta emprestada
+  AJUSTE     // correção de inventário (contagem)
+  EMPRESTIMO // ferramenta saiu temporariamente com um funcionário (não altera estoqueAtual)
+  DEVOLUCAO  // ferramenta voltou do empréstimo (não altera estoqueAtual)
+}
+
+// Ledger imutável: fonte da verdade do estoque e do histórico/log.
+model MovimentacaoEstoque {
+  id             String           @id @default(uuid())
+  produtoId      String
+  produto        Produto          @relation(fields: [produtoId], references: [id])
+  tipo           TipoMovimentacao
+  quantidade     Int // sempre positivo; "tipo" define o sinal
+  saldoApos      Int // snapshot do estoque após o movimento (auditoria)
+  // Quem OPEROU o sistema (usuário logado — resolvido do JWT, nunca do cliente).
+  usuarioId      String
+  usuario        Usuario          @relation(fields: [usuarioId], references: [id])
+  // Motivo da saída: opcionalmente uma OS (peça que foi pro conserto).
+  ordemServicoId String?
+  ordemServico   OrdemServico?    @relation(fields: [ordemServicoId], references: [id])
+  // Presente em EMPRESTIMO/DEVOLUCAO (e na SAIDA de uma perda) — liga ao ciclo de vida do empréstimo.
+  emprestimoId   String?
+  emprestimo     Emprestimo?      @relation(fields: [emprestimoId], references: [id])
+  motivo         String?
+  criadoEm       DateTime         @default(now())
+
+  @@index([produtoId, criadoEm])
+  @@index([tipo, criadoEm])
+  @@map("movimentacoes_estoque")
+}
+
+// Pendência de ferramenta: aberta na retirada, fechada por devolução ou perda.
+// Múltiplas linhas do mesmo produto podem estar ABERTO simultaneamente
+// (a mesma ferramenta emprestada a pessoas diferentes).
+enum StatusEmprestimo {
+  ABERTO
+  DEVOLVIDO
+  PERDIDO
+}
+
+model Emprestimo {
+  id                  String           @id @default(uuid())
+  produtoId           String
+  produto             Produto          @relation(fields: [produtoId], references: [id])
+  funcionarioId       String
+  funcionario         Funcionario      @relation(fields: [funcionarioId], references: [id])
+  quantidade          Int
+  status              StatusEmprestimo @default(ABERTO)
+  retiradoEm          DateTime         @default(now())
+  prazoEm             DateTime // retiradoEm + prazo (horas) vigente na retirada
+  devolvidoEm         DateTime? // preenchido no fechamento (devolução OU perda)
+  usuarioRetiradaId   String
+  usuarioRetirada     Usuario          @relation("EmprestimosRetirada", fields: [usuarioRetiradaId], references: [id])
+  usuarioFechamentoId String?
+  usuarioFechamento   Usuario?         @relation("EmprestimosFechamento", fields: [usuarioFechamentoId], references: [id])
+  motivo              String? // observação da retirada
+  motivoFechamento    String? // obrigatório no fluxo de perda
+
+  movimentacoes MovimentacaoEstoque[]
+
+  @@index([status])
+  @@index([produtoId])
+  @@index([funcionarioId])
+  @@map("emprestimos")
+}
+
+// Linha única de configuração operacional (hoje só o prazo padrão de empréstimo).
+model Configuracao {
+  id                   String @id @default("default")
+  prazoEmprestimoHoras Int    @default(24)
+
+  @@map("configuracoes")
+}
+
+// ───────────────────────── Ordens de Serviço ─────────────────────────
+// Mantidas como apoio: a SAÍDA pode referenciar uma OS/caminhão.
+
+enum StatusOS {
+  RECEBIDO
+  DIAGNOSTICO
+  AGUARDANDO_PECA
+  EXECUCAO
+  PRONTO
+  FATURADO
+}
+
+model OrdemServico {
+  id                String       @id @default(uuid())
+  numero            Int          @unique @default(autoincrement())
+  clienteId         String
+  cliente           Cliente      @relation(fields: [clienteId], references: [id])
+  veiculoId         String
+  veiculo           Veiculo      @relation(fields: [veiculoId], references: [id])
+  mecanicoId        String?
+  mecanico          Funcionario? @relation("MecanicoResponsavel", fields: [mecanicoId], references: [id])
+  status            StatusOS     @default(RECEBIDO)
+  kmEntrada         Int?
+  descricaoProblema String?
+  abertaEm          DateTime     @default(now())
+  concluidaEm       DateTime?
+
+  itens         ItemOrdemServico[]
+  movimentacoes MovimentacaoEstoque[]
+
+  @@index([status])
+  @@index([clienteId])
+  @@map("ordens_servico")
+}
+
+enum TipoItemOS {
+  PECA
+  MAO_DE_OBRA
+}
+
+model ItemOrdemServico {
+  id             String       @id @default(uuid())
+  ordemServicoId String
+  ordemServico   OrdemServico @relation(fields: [ordemServicoId], references: [id], onDelete: Cascade)
+  tipo           TipoItemOS
+  produtoId      String?
+  produto        Produto?     @relation(fields: [produtoId], references: [id])
+  descricao      String
+  quantidade     Decimal      @db.Decimal(10, 2)
+  executorId     String?
+  executor       Funcionario? @relation(fields: [executorId], references: [id])
+
+  @@index([ordemServicoId])
+  @@map("itens_ordem_servico")
+}
