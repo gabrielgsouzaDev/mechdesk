@@ -226,11 +226,21 @@ export function CrudPage<T extends { id: string }>({
           ) : (
             filtrados.map((row) => (
               <TR key={row.id}>
-                {columns.map((c) => (
-                  <TD key={c.header} className={c.className}>
-                    {c.cell(row)}
-                  </TD>
-                ))}
+                {columns.map((c) => {
+                  const conteudo = c.cell(row);
+                  return (
+                    <TD key={c.header} className={c.className}>
+                      {/* Limite visual do template: texto longo trunca com
+                          reticências em vez de deformar a tabela inteira. */}
+                      <div
+                        className="max-w-[250px] truncate"
+                        title={typeof conteudo === "string" ? conteudo : undefined}
+                      >
+                        {conteudo}
+                      </div>
+                    </TD>
+                  );
+                })}
                 <TD className="text-right">
                   <div className="flex justify-end gap-1">
                     <button

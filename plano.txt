@@ -1,0 +1,56 @@
+# PROTOCOLO DE AUDITORIA MECÂNICA: PROJETO MECHDESK
+# INVOCANDO SKILLS: Impeccable, Superpowers & SaaS-Pipeline
+
+Você é o Arquiteto de Software Principal e Auditor Líder do MechDesk. Antes de avançarmos para a "Etapa 5: Permissões e Admin", você deve paralisar novas implementações e rodar uma auditoria profunda de integridade técnica, segurança, qualidade de código e design system no estado atual do app.
+
+Para este processo, você deve carregar e executar nativamente os comportamentos e comandos das três skills abaixo:
+
+---
+
+## 1. COMPORTAMENTO EXIGIDO PELAS SKILLS
+
+### 🛠️ FILOSOFIA SUPERPOWERS (Rigor, Lógica e Evidência)
+- Ative o fluxo [brainstorming] para analisar o escopo e fazer perguntas socráticas sobre inconsistências.
+- Siga a mentalidade RED-GREEN-REFACTOR de [test-driven-development]: código sem teste ou sem validação explícita de erro não é considerado pronto.
+- Aplique a diretriz de [writing-plans]: divida as correções pendentes em tarefas atômicas e rastreáveis de 2 a 5 minutos, com caminhos de arquivos exatos e passos de verificação claros.
+- NÃO use placeholders, comentários de "TODO" ou omissões de código. Entregue arquivos 100% completos.
+
+### 📐 COMANDOS IMPECCABLE (Fuga do Genérico de IA & UX Obstinada)
+Invoque mentalmente e execute as regras dos seguintes comandos nas superfícies do frontend (`PendenciasPage`, hooks `useFerramentaria`/`useOrdenacao`, e componentes globais):
+- `/impeccable audit`: Varra o código atrás de quebras de acessibilidade, problemas de performance e responsividade em telas densas.
+- `/impeccable critique`: Revise a hierarquia visual. Elimine os anti-padrões clássicos de IA: texto cinza sobre fundo colorido, excesso de cards aninhados (cards dentro de cards), uso preguiçoso de fontes padrão (como Inter pura sem personalidade) e cantos arredondados excessivos sem propósito.
+- `/impeccable harden`: Adicione tratamento estrito de estouro de texto (text-overflow), internacionalização (garantir consistência em PT-BR) e tratamento de estados vazios (empty states) ou de erro.
+
+### 🏢 ARQUITETURA SAAS-PIPELINE (Multi-Tenancy & Banco de Dados)
+- Avalie se as 4 tabelas atuais e as RPCs com trava de concorrência (`FOR UPDATE`) no Supabase/PostgreSQL estão estruturalmente prontas para receber isolamento nativo por `tenant_id` sem quebrar a lógica de negócio.
+- Verifique a imutabilidade do ledger (padrão insert-only para histórico de movimentações).
+
+---
+
+## 2. MAPA DO ESTADO ATUAL PARA ANÁLISE
+- **Entregas alegadas:** Etapas 1, 2, 3 e 4 concluídas em 05/07.
+- **Novidades na árvore:** `PendenciasPage`, hooks `useFerramentaria` e `useOrdenacao`, DTOs de empréstimo, migração de ferramentaria e arquivo de `Avaliação 02` na raiz.
+- **Vulnerabilidade Crítica 01:** Repositório com ZERO commits. Toda a working tree corre risco de perda total.
+- **Vulnerabilidade Crítica 02 (Fallback Silencioso pro Modo Demo):** Se o app rodar sem o `.env` ou sem a variável `VITE_API_URL`, ele cai silenciosamente em modo demonstração, logando automaticamente como a usuária fake "Marina" sem exibir erro e ocultando o botão de logout.
+
+---
+
+## 3. SEUS ENTREGÁVEIS OBRIGATÓRIOS
+
+Gere um relatório de auditoria dividido estritamente nos seguintes tópicos:
+
+### Ponto 1: Diagnóstico Técnico Consolidado
+Um parecer crítico sobre a qualidade do frontend, backend, banco de dados e segurança do MechDesk hoje. Aponte o que está verdadeiramente de acordo com um SaaS de produção e o que é "slop de IA" (código mal otimizado gerado automaticamente).
+
+### Ponto 2: Correção do Fallback Demo via [/impeccable harden]
+Forneça a refatoração e o código completo do arquivo de inicialização/autenticação. Aplique a técnica de hardening: elimine o fallback silencioso. Se o `.env` sumir, o app deve travar imediatamente e renderizar uma tela de erro fatal customizada ("Configuração de Ambiente Ausente"), a menos que a flag explícita `VITE_DEMO=1` esteja ativa.
+
+### Ponto 3: Atualização do `ESCOPO.md`
+Reescreva o documento `ESCOPO.md` consolidando as etapas passadas, inserindo as correções técnicas descobertas nesta auditoria como "Pré-requisitos de Infraestrutura" e desenhando a próxima grande fase (**Etapa 5: Permissões, RBAC e Gestão Admin**) sob a ótica estrita de arquitetura multi-tenant do `saas-pipeline`.
+
+### Ponto 4: O Próximo [writing-plans]
+Apresente a lista ordenada de tarefas em micro-etapas para limpar o código atual, garantir os testes e estruturar o ambiente antes de codificarmos a Etapa 5.
+
+---
+
+Comece a auditoria agora. Se precisar inspecionar arquivos específicos antes de fechar o diagnóstico (como o arquivo de inicialização do app, o schema do banco ou a `PendenciasPage`), peça-os imediatamente no início da resposta.

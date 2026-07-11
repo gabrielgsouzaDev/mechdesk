@@ -1,4 +1,4 @@
-import { IsInt, IsOptional, IsPositive, IsString, IsUUID } from "class-validator";
+import { IsIn, IsInt, IsOptional, IsPositive, IsString, IsUUID } from "class-validator";
 
 export class EmprestimoDto {
   @IsUUID()
@@ -33,4 +33,15 @@ export class ConfiguracaoDto {
   @IsInt()
   @IsPositive()
   prazoEmprestimoHoras!: number;
+}
+
+// Espelha o enum StatusEmprestimo do schema Prisma. Query string é entrada
+// não confiável: só estes valores passam do ValidationPipe global.
+export const STATUS_EMPRESTIMO = ["ABERTO", "DEVOLVIDO", "PERDIDO"] as const;
+export type StatusEmprestimoQuery = (typeof STATUS_EMPRESTIMO)[number];
+
+export class ListarEmprestimosQueryDto {
+  @IsOptional()
+  @IsIn(STATUS_EMPRESTIMO)
+  status?: StatusEmprestimoQuery;
 }

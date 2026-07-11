@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "./supabase";
-import { isLiveMode } from "./config";
+import { isDemoMode, isLiveMode } from "./config";
 import { api } from "./api";
 import { OPERADOR } from "./mock";
 
@@ -18,7 +18,9 @@ type AuthState = {
 
 const AuthContext = createContext<AuthState>(null as never);
 
-// Modo demo (sem backend): opera sem login, com operador fictício.
+// Modo demo (APENAS com VITE_DEMO=1 explícito): opera sem login, com operador
+// fictício. Sem a flag, ambiente incompleto nem chega aqui — o main.tsx trava
+// na tela "Configuração de Ambiente Ausente".
 const DEMO: AuthState = {
   carregando: false,
   session: {} as Session,
@@ -83,9 +85,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await supabase.auth.signOut();
   }
 
-  const value = isLiveMode
-    ? { carregando, session, operador, erro, entrar, sair }
-    : DEMO;
+  // Demo exige a flag explícita; qualquer outro caminho usa o fluxo real.
+  const value = isDemoMode
+    ? DEMO
+    : { carregando, session, operador, erro, entrar, sair };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

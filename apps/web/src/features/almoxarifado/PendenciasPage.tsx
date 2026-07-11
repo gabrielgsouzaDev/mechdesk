@@ -238,13 +238,22 @@ function LinhaEmprestimo({ e, onDevolver, onPerder }: { e: Emprestimo; onDevolve
   return (
     <TR className={vencido ? "bg-rose-500/[0.04]" : undefined}>
       <TD>
-        <span className="font-medium text-zinc-100">{e.produto?.descricao ?? "—"}</span>
-        <span className="ml-2 text-xs text-zinc-500">{e.produto?.sku}</span>
+        {/* max-w + truncate: descrição de produto longa não deforma a tabela. */}
+        <div className="flex max-w-[250px] items-baseline gap-2">
+          <span className="min-w-0 truncate font-medium text-zinc-100" title={e.produto?.descricao}>
+            {e.produto?.descricao ?? "—"}
+          </span>
+          <span className="shrink-0 text-xs text-zinc-500">{e.produto?.sku}</span>
+        </div>
       </TD>
       <TD className="text-right font-display font-semibold tabular-nums text-zinc-200">{e.quantidade}</TD>
       <TD>
-        <span className="text-zinc-100">{e.funcionario?.nome ?? "—"}</span>
-        {e.funcionario?.cargo && <span className="ml-2 text-xs text-zinc-500">{e.funcionario.cargo}</span>}
+        <div className="flex max-w-[200px] items-baseline gap-2">
+          <span className="min-w-0 truncate text-zinc-100" title={e.funcionario?.nome}>
+            {e.funcionario?.nome ?? "—"}
+          </span>
+          {e.funcionario?.cargo && <span className="shrink-0 text-xs text-zinc-500">{e.funcionario.cargo}</span>}
+        </div>
       </TD>
       <TD className="text-zinc-400">{tempoDecorrido(e.retiradoEm)}</TD>
       <TD className={vencido ? "font-medium text-rose-400" : "text-zinc-400"}>{dataHora(e.prazoEm)}</TD>

@@ -1,8 +1,8 @@
-# Luciano Freios — Escopo & Roadmap
+# Luciano Freios (MechDesk) — Escopo & Roadmap
 
-> Documento de referência do escopo. Atualizado em **2026-07-04** após a
-> "Avaliação do Sistema 01" do Gabriel. Ordem das etapas = ordem de
-> dependência: nenhuma etapa depende de algo que vem depois dela.
+> Documento de referência do escopo. Atualizado em **2026-07-10** após a
+> **Auditoria de Integridade Técnica** (pós-Etapa 4, pré-Etapa 5). Ordem das
+> etapas = ordem de dependência: nenhuma etapa depende de algo que vem depois.
 
 ## Decisões de produto vigentes
 
@@ -13,72 +13,113 @@
 | Usuário ≠ Funcionário | Usuário = quem loga (~3). Funcionário = quem trabalha (~10, p/ banco de horas e empréstimos). Tabelas separadas |
 | Preços de peças | **Ocultos no frontend** (inútil por agora). Colunas continuam no banco sendo capturadas — reativação futura com o módulo financeiro |
 | Ferramentas | Estoque único com categoria `PECA`/`FERRAMENTA`. Ferramenta sai por **empréstimo** (temporário, vinculado ao funcionário) e volta por **devolução** |
-| Pendências de ferramenta | Visíveis para ADMIN **e** ALMOXARIFADO (cobrar mecânico). **Notificação só para ADMIN**, após prazo configurável (padrão 24h) |
+| Pendências de ferramenta | Visíveis para ADMIN **e** ALMOXARIFADO (cobrar mecânico). **Notificação só para ADMIN**, após prazo configurável (padrão 24h, decidido só pelo Admin) |
+| Modo demonstração | **Só com `VITE_DEMO=1` explícito.** Ambiente sem configuração = tela de erro fatal ("Configuração de Ambiente Ausente"), nunca fallback silencioso |
 | Migração de região (sa-east-1) | Adiada — sem necessidade por agora |
-| Cobrança do sistema | Direção: SaaS mensal + implantação (decisão externa, não bloqueia nada) |
+| Cobrança do sistema | Direção: SaaS mensal + implantação. Consequência arquitetural: **toda decisão nova nasce compatível com multi-tenant** (ver Etapa 5) |
 
-## Etapas (ordem de execução)
+## Etapas concluídas (consolidado)
 
-### ✅ Concluído
-- Fase 0: scaffold monorepo (Vite/React + NestJS + Prisma + Supabase)
+### ✅ Fundação (Fase 0)
+- Scaffold monorepo (Vite/React + NestJS + Prisma + Supabase)
 - Cadastros: produtos, clientes, veículos, funcionários
-- Núcleo de estoque: movimentação ENTRADA/SAÍDA atômica + ledger imutável + histórico
-- Tempo real sem F5 (Supabase Realtime) — live em produção
+- Núcleo de estoque: movimentação ENTRADA/SAÍDA atômica (RPC `FOR UPDATE`) + ledger imutável + histórico
+- Tempo real sem F5 (Supabase Realtime); RLS: leitura só autenticada, escrita só via API (service role)
 - Design system da marca (aço + laranja, Oswald/Inter)
-- Auth (Supabase, JWKS ES256) + RBAC em 3 camadas (menu/rota/API)
-- Remoção de vendas/fiscal/locais_estoque (refoco)
+- Auth (Supabase, JWKS ES256 verificado localmente) + RBAC em 3 camadas (menu/rota/API)
 
-### Etapa 1 — Faxina de escopo 🧹 ✅ (2026-07-04)
-*Sem dependências. Rápida.*
-- Ocultar preços em toda a UI: cards do console, colunas de tabelas, campos do formulário de produto
-- Banco intocado (continua capturando custo/venda p/ o futuro financeiro)
+### ✅ Etapa 1 — Faxina de escopo 🧹 (2026-07-04)
+- Preços ocultos em toda a UI; banco continua capturando custo/venda
 
-### Etapa 2 — Identidade: Usuários × Funcionários 👤 ✅ (2026-07-04)
-*Sem dependências. Base das etapas 3, 5 e do futuro RH.*
-- Nova tabela `usuarios`: authUserId, papel (`ADMIN` | `ALMOXARIFADO`), vínculo opcional a funcionário
-- `funcionarios` vira registro de pessoa/equipe: nome, cpf, **cargo** (texto: Mecânico, Secretária…), ativo — sem login, sem papel de acesso
-- Migração de dados: Luciano → usuário ADMIN; Marina → usuária ALMOXARIFADO (+ funcionária); demais ficam só como funcionários
-- Ledger passa a registrar `usuarioId` (quem operou o sistema)
-- API + menu + guards atualizados para os 2 papéis
+### ✅ Etapa 2 — Identidade: Usuários × Funcionários 👤 (2026-07-04)
+- Tabela `usuarios` (authUserId, papel, vínculo opcional a funcionário); `funcionarios` = pessoa/equipe sem login
+- Ledger registra `usuarioId` (quem operou); API + menu + guards nos 2 papéis
 
-### Etapa 3 — Ferramentaria (empréstimo/devolução) 🔧 ✅ (2026-07-05)
-*Depende da Etapa 2 (empréstimo aponta para funcionário do modelo novo).*
-- `Produto.categoria`: `PECA` (consumível, baixa definitiva) | `FERRAMENTA` (retornável)
-- Novos tipos no ledger: `EMPRESTIMO` e `DEVOLUCAO` (auditáveis como tudo)
-- Tabela `emprestimos` (pendências abertas): ferramenta, funcionário, retirada, prazo, devolução
-- Console: ferramenta selecionada → fluxo de empréstimo (para qual funcionário) em vez de saída
-- Tela **Pendências** (ADMIN + ALMOXARIFADO): o que está fora, com quem, há quanto tempo; vencidas em destaque
-- Alerta para ADMIN após prazo configurável (padrão 24h) — in-app primeiro
-- Casos cobertos: perda (converte em baixa definitiva com motivo), múltiplas unidades da mesma ferramenta com pessoas diferentes
+### ✅ Etapa 3 — Ferramentaria (empréstimo/devolução) 🔧 (2026-07-05)
+- `Produto.categoria` PECA/FERRAMENTA; tipos `EMPRESTIMO`/`DEVOLUCAO` no ledger; tabela `emprestimos`
+- RPCs atômicas com trava de concorrência (`registrar_emprestimo`, `registrar_devolucao`, `registrar_perda`)
+- Tela **Pendências** + alerta in-app para ADMIN após o prazo; perda = baixa definitiva com motivo
+- Prazo padrão configurável **só pelo Admin** (`configuracoes`, Avaliação 02)
 
-### Etapa 4 — Filtros e ordenações 🔍 ✅ (2026-07-05)
-*Depois da 3 para já nascer filtrando categorias/pendências.*
-- Ordenação por coluna nas tabelas (CrudPage genérico → propaga para todas)
-- Chips contextuais por tela: Produtos ("abaixo do mínimo", categoria), Histórico (período, tipo, produto), Pendências (vencidas)
-- Sem poluição: filtro só onde o dado pede
+### ✅ Etapa 4 — Filtros e ordenações 🔍 (2026-07-05)
+- `useOrdenacao` compartilhado (asc → desc → sem; pt-BR, numérico humano, nulos por último) em todas as tabelas
+- Chips contextuais por tela (Produtos, Histórico, Pendências)
 
-### Etapa 5 — Permissões no banco + gestão pelo Admin ⚙️
-*Depende da Etapa 2.*
-- Matriz papel × recurso × ação sai do código e vira tabela
-- Tela do Admin: checkboxes por papel (ver/criar/editar/excluir por recurso)
-- Gestão de usuários (criar/desativar login, trocar papel) na mesma tela
-- Enforcement continua em 3 camadas (menu/rota/API), agora lendo do banco
+### ✅ Auditoria de Integridade Técnica 🔎 (2026-07-10)
+- Diagnóstico completo de frontend, backend, banco e segurança (relatório da auditoria)
+- **Correção aplicada:** fallback silencioso pro modo demo eliminado — `VITE_DEMO=1`
+  explícito ou tela de erro fatal; string vazia no `.env` tratada como ausente
+  (`config.ts`, `main.tsx`, `auth.tsx`, `supabase.ts`, `ErroConfiguracao.tsx`)
+
+## Etapa 4.5 — Pré-requisitos de Infraestrutura 🧱 (NOVA — antes da Etapa 5)
+
+*Descobertos na auditoria. Nenhuma feature nova entra antes disto: são a rede de
+segurança que a Etapa 5 (permissões dinâmicas) exige.*
+
+1. **Higiene de versionamento** — o repositório tem um único commit gigante
+   ("Estado inicial"). Adotar commits pequenos por tarefa; commitar o estado
+   atual (incluindo as correções da auditoria) antes de qualquer código novo.
+2. **Base de testes = zero.** Instalar Vitest no `apps/web` e cobrir primeiro o
+   que a Etapa 5 vai tocar: `permissions.ts` (matriz papel × rota),
+   `useOrdenacao` (comparador pt-BR), `config.ts` (gate de ambiente). API: teste
+   e2e mínimo do guard (401 sem token, 403 papel errado) antes de mexer em RBAC.
+3. **Navegação mobile inexistente** — a sidebar é `hidden md:flex` e não há menu
+   alternativo: no celular o operador não navega. Corrigir antes da Etapa 5
+   (a tela de admin nascerá responsiva).
+4. **Acessibilidade do Modal** — sem `role="dialog"`, `aria-modal`, foco não é
+   capturado nem devolvido. Corrigir no componente único (`ui/modal.tsx`).
+5. **Bundle único de 541 kB** — code-splitting por rota (`React.lazy`) nas telas
+   de cadastro; a Etapa 5 adiciona telas de admin e o problema só cresce.
+6. **Robustez da API** — `getConfig()` com `findUniqueOrThrow` vira 500 se o seed
+   não rodou (deve devolver o padrão de 24h); `listarEmprestimos` sem `take`
+   (crescimento sem limite); validar `status` recebido em query string.
+
+## Próxima grande fase
+
+### Etapa 5 — Permissões, RBAC e Gestão Admin ⚙️ (ótica multi-tenant / saas-pipeline)
+*Depende da Etapa 2 e da Etapa 4.5. O SaaS mensal já é direção declarada:
+a matriz de permissões nasce pronta para `tenant_id`, mesmo operando single-tenant.*
+
+**5.1 — Modelo de dados de permissões**
+- Matriz papel × recurso × ação sai do código e vira tabela (`permissoes`):
+  `papel`, `recurso`, `acao` (`VER|CRIAR|EDITAR|EXCLUIR`), `permitido`
+- **Toda tabela nova já nasce com `tenant_id TEXT NOT NULL DEFAULT 'default'`** +
+  índice composto — custo zero hoje, migração trivial amanhã
+- Seed reproduz a matriz atual (`permissions.ts`) para migração sem regressão
+
+**5.2 — Enforcement em 3 camadas lendo do banco**
+- API: guard consulta `permissoes` (cache curto em memória, invalidado por Realtime)
+- Frontend: `GET /me` passa a devolver o mapa de permissões do papel; menu e
+  guard de rota leem do mapa (o `permissions.ts` hardcoded vira fallback do demo)
+- RLS continua bloqueando escrita direta do browser (inalterado)
+
+**5.3 — Tela do Admin**
+- Checkboxes papel × recurso × ação; gestão de usuários (criar/desativar login,
+  trocar papel) na mesma tela; auditoria: mudanças de permissão registradas
+  (padrão insert-only, mesmo espírito do ledger)
+
+**5.4 — Preparação multi-tenant (sem ativar)**
+- `tenant_id` nas 4 tabelas do núcleo operacional (`produtos`,
+  `movimentacoes_estoque`, `emprestimos`, `configuracoes`) com `DEFAULT 'default'`
+- `configuracoes` deixa de ser linha única global: PK passa a (`tenant_id`) —
+  hoje uma linha 'default', amanhã uma por oficina
+- RPCs ganham parâmetro `p_tenant_id` (default `'default'`) e filtram por ele
+  dentro da transação — a trava `FOR UPDATE` continua por linha de produto
+- Política RLS futura: `tenant_id = auth.jwt() ->> 'tenant_id'` (documentada,
+  não ativada; hoje segue "leitura autenticada, escrita via API")
 
 ### Etapa 6 — Dashboard do Admin 📊
-*Depende das etapas 3 e 4 (dados + filtros). Sem valores financeiros (preços ocultos).*
-- Visão operacional: movimentações no tempo, itens críticos (abaixo do mínimo), top consumo, pendências de ferramentas
+*Depende das etapas 3 e 4 (dados + filtros). Sem valores financeiros.*
+- Visão operacional: movimentações no tempo, itens críticos, top consumo, pendências
 - Gráfico coerente ao dado; leitura em segundos; só ADMIN
 
 ### Etapa 7 — Performance e resiliência ⚡
-*Por último entre as técnicas: a fila offline envolve o fluxo de movimentação, que a Etapa 3 modifica — fazer depois evita retrabalho.*
-- Cache-first: React Query persistido → telas pintam instantâneo do cache e revalidam por trás
-- Boot paralelo (auth + dados juntos)
-- Offline crítico: leitura do cache sem internet + fila de escrita para movimentações (registra local, sincroniza ao voltar)
-- *Fora do escopo: sync offline completo com resolução de conflitos (custo não justifica)*
+- Cache-first (React Query persistido), boot paralelo, fila offline de escrita
+- *Fora do escopo: sync offline completo com resolução de conflitos*
 
 ## Gaveta (futuro, ordem provável)
-1. **RH / Banco de horas** — requer Etapa 2 pronta + descoberta do scanner facial (marca/modelo → AFD ou API). Papel RH nasce aqui. Nunca: cálculo de folha (CLT = risco legal) nem armazenar biometria (LGPD)
+1. **RH / Banco de horas** — requer Etapa 2 + descoberta do scanner facial. Nunca: cálculo de folha (CLT) nem biometria armazenada (LGPD)
 2. **Fila de atendimento de OS** — prioridade por parceria, override do dono, tempo real
 3. **Portal do cliente** — status da OS por link com token, sem login
 4. **Financeiro** — reativa preços na UI; fornecedores, custo mensal, faturamento; só ADMIN
-5. **Migração sa-east-1 / multi-cliente / cobrança SaaS** — quando for escalar
+5. **Multi-tenant pleno / cobrança SaaS / sa-east-1** — ativar o `tenant_id` semeado na Etapa 5, RLS por tenant, onboarding de oficinas

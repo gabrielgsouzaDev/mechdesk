@@ -2,7 +2,13 @@ import { Body, Controller, Get, Param, Patch, Post, Query } from "@nestjs/common
 import type { Usuario } from "@lf/db";
 import { EstoqueService } from "./estoque.service";
 import { MovimentacaoDto } from "./dto/movimentacao.dto";
-import { ConfiguracaoDto, DevolucaoDto, EmprestimoDto, PerdaDto } from "./dto/emprestimo.dto";
+import {
+  ConfiguracaoDto,
+  DevolucaoDto,
+  EmprestimoDto,
+  ListarEmprestimosQueryDto,
+  PerdaDto,
+} from "./dto/emprestimo.dto";
 import { CurrentUsuario, Roles } from "../auth/decorators";
 
 // Estoque é operado por almoxarifado e admin (papéis atuais: só os dois).
@@ -26,9 +32,10 @@ export class EstoqueController {
     return this.estoque.registrar(dto, u.id);
   }
 
+  // Status validado pelo DTO: valor fora do enum → 400 antes de tocar o banco.
   @Get("emprestimos")
-  listarEmprestimos(@Query("status") status?: string) {
-    return this.estoque.listarEmprestimos(status);
+  listarEmprestimos(@Query() query: ListarEmprestimosQueryDto) {
+    return this.estoque.listarEmprestimos(query.status);
   }
 
   @Post("emprestimo")

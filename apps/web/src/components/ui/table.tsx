@@ -5,7 +5,9 @@ import type { Ordem } from "@/hooks/useOrdenacao";
 
 export function Table({ className, ...props }: React.HTMLAttributes<HTMLTableElement>) {
   return (
-    <div className="overflow-hidden rounded-xl border border-zinc-700/70 bg-zinc-800 shadow-sm">
+    // overflow-x-auto: em tela estreita a tabela densa rola na horizontal
+    // dentro do próprio card — nenhuma coluna (ex.: Ações) é decepada.
+    <div className="overflow-x-auto rounded-xl border border-zinc-700/70 bg-zinc-800 shadow-sm">
       <table className={cn("w-full text-sm", className)} {...props} />
     </div>
   );

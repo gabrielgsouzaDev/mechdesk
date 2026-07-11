@@ -44,9 +44,12 @@ export function AppShell() {
     itens: g.itens.filter((i) => podeAcessar(operador?.papel, i.to)),
   })).filter((g) => g.itens.length > 0);
 
+  // Barra inferior mobile: mesma matriz de permissões, lista achatada.
+  const itensMobile = gruposVisiveis.flatMap((g) => g.itens);
+
   return (
     <div className="flex min-h-dvh bg-zinc-900 text-zinc-100">
-      {/* ── Sidebar ── */}
+      {/* ── Sidebar (≥ md) ── */}
       <aside className="sticky top-0 hidden h-dvh w-60 shrink-0 flex-col border-r border-zinc-800 bg-zinc-900 md:flex">
         <div className="flex items-center gap-3 px-5 py-5">
           <div className="grid size-10 place-items-center rounded-lg bg-orange-600 text-white shadow-sm ring-1 ring-orange-500/30">
@@ -116,6 +119,7 @@ export function AppShell() {
               <button
                 onClick={sair}
                 title="Sair"
+                aria-label="Sair"
                 className="grid size-8 shrink-0 place-items-center rounded-lg text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-200"
               >
                 <LogOut className="size-4" />
@@ -127,7 +131,8 @@ export function AppShell() {
 
       {/* ── Conteúdo ── */}
       <div className="flex min-w-0 flex-1 flex-col">
-        <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-6">
+        {/* pb extra no mobile: a barra inferior fixa não pode cobrir conteúdo. */}
+        <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 pb-24 md:px-6 md:pb-6">
           {/* Alerta de ferramenta vencida: só o Admin recebe notificação (escopo Etapa 3). */}
           {operador?.papel === "ADMIN" && vencidos.length > 0 && (
             <NavLink
@@ -144,6 +149,45 @@ export function AppShell() {
           <Outlet />
         </main>
       </div>
+
+      {/* ── Navegação mobile (< md): barra inferior fixa, mesma matriz RBAC ── */}
+      <nav
+        aria-label="Navegação principal"
+        className="fixed inset-x-0 bottom-0 z-30 border-t border-zinc-800 bg-zinc-900/95 backdrop-blur-sm md:hidden"
+      >
+        <div className="flex items-stretch overflow-x-auto">
+          {itensMobile.map((item) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              end={item.end}
+              className={({ isActive }) =>
+                cn(
+                  "relative flex min-h-14 min-w-16 flex-1 shrink-0 flex-col items-center justify-center gap-1 px-2 py-2 text-[10px] font-medium transition-colors",
+                  isActive ? "text-orange-400" : "text-zinc-500 hover:text-zinc-200",
+                )
+              }
+            >
+              <item.icon className="size-5" />
+              {item.label}
+              {item.to === "/pendencias" && vencidos.length > 0 && (
+                <span className="absolute right-1/2 top-1 mr-[-22px] grid size-4 place-items-center rounded-full bg-rose-500 text-[9px] font-bold text-white">
+                  {vencidos.length}
+                </span>
+              )}
+            </NavLink>
+          ))}
+          {isLiveMode && (
+            <button
+              onClick={sair}
+              className="flex min-h-14 min-w-16 shrink-0 flex-col items-center justify-center gap-1 px-2 py-2 text-[10px] font-medium text-zinc-500 transition-colors hover:text-zinc-200"
+            >
+              <LogOut className="size-5" />
+              Sair
+            </button>
+          )}
+        </div>
+      </nav>
     </div>
   );
 }

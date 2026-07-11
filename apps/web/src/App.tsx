@@ -1,17 +1,53 @@
+import { lazy, Suspense } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import { Loader2, AlertTriangle, ShieldOff } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { ConsoleMovimentacao } from "@/features/almoxarifado/ConsoleMovimentacao";
 import { PendenciasPage } from "@/features/almoxarifado/PendenciasPage";
 import { MovimentacoesPage } from "@/features/estoque/MovimentacoesPage";
-import { ProdutosPage } from "@/features/cadastros/ProdutosPage";
-import { ClientesPage } from "@/features/cadastros/ClientesPage";
-import { VeiculosPage } from "@/features/cadastros/VeiculosPage";
-import { FuncionariosPage } from "@/features/cadastros/FuncionariosPage";
 import { LoginPage } from "@/features/auth/LoginPage";
 import { useAuth } from "@/lib/auth";
 import { podeAcessar, primeiraRotaPermitida } from "@/lib/permissions";
 import { Button } from "@/components/ui/button";
+
+// Cadastros saem do bundle principal: são telas secundárias ao fluxo diário
+// (console/histórico/pendências) e carregam sob demanda via React.lazy.
+const ProdutosPage = lazy(() =>
+  import("@/features/cadastros/ProdutosPage").then((m) => ({ default: m.ProdutosPage })),
+);
+const ClientesPage = lazy(() =>
+  import("@/features/cadastros/ClientesPage").then((m) => ({ default: m.ClientesPage })),
+);
+const VeiculosPage = lazy(() =>
+  import("@/features/cadastros/VeiculosPage").then((m) => ({ default: m.VeiculosPage })),
+);
+const FuncionariosPage = lazy(() =>
+  import("@/features/cadastros/FuncionariosPage").then((m) => ({ default: m.FuncionariosPage })),
+);
+
+// Skeleton do carregamento de rota lazy: ecoa a estrutura das telas de
+// cadastro (cabeçalho + busca + tabela) para o conteúdo não "pular".
+function PaginaCarregando() {
+  return (
+    <div className="animate-pulse space-y-5" aria-hidden="true">
+      <div className="flex items-center gap-3">
+        <div className="size-10 rounded-lg bg-zinc-800" />
+        <div className="space-y-2">
+          <div className="h-5 w-40 rounded bg-zinc-800" />
+          <div className="h-3 w-56 rounded bg-zinc-800/70" />
+        </div>
+      </div>
+      <div className="h-10 w-full max-w-sm rounded-lg bg-zinc-800" />
+      <div className="space-y-px overflow-hidden rounded-xl border border-zinc-700/70">
+        <div className="h-10 bg-zinc-800" />
+        <div className="h-12 bg-zinc-800/60" />
+        <div className="h-12 bg-zinc-800/60" />
+        <div className="h-12 bg-zinc-800/60" />
+        <div className="h-12 bg-zinc-800/60" />
+      </div>
+    </div>
+  );
+}
 
 // Guard de rota: URL digitada na mão também respeita a matriz de papéis.
 // Sem acesso à rota → redireciona pra primeira permitida; sem nenhuma → aviso.
@@ -40,7 +76,7 @@ function SemAcesso() {
 }
 
 // Foco: controle de estoque (entrada/saída) + histórico + cadastros de apoio.
-// Acesso: login obrigatório no modo live; modo demo opera sem backend.
+// Acesso: login obrigatório no modo live; modo demo só com VITE_DEMO=1.
 export default function App() {
   const { carregando, session, operador, erro, sair } = useAuth();
 
@@ -77,10 +113,46 @@ export default function App() {
         <Route index element={<Protegida rota="/"><ConsoleMovimentacao /></Protegida>} />
         <Route path="movimentacoes" element={<Protegida rota="/movimentacoes"><MovimentacoesPage /></Protegida>} />
         <Route path="pendencias" element={<Protegida rota="/pendencias"><PendenciasPage /></Protegida>} />
-        <Route path="cadastros/produtos" element={<Protegida rota="/cadastros/produtos"><ProdutosPage /></Protegida>} />
-        <Route path="cadastros/clientes" element={<Protegida rota="/cadastros/clientes"><ClientesPage /></Protegida>} />
-        <Route path="cadastros/veiculos" element={<Protegida rota="/cadastros/veiculos"><VeiculosPage /></Protegida>} />
-        <Route path="cadastros/funcionarios" element={<Protegida rota="/cadastros/funcionarios"><FuncionariosPage /></Protegida>} />
+        <Route
+          path="cadastros/produtos"
+          element={
+            <Protegida rota="/cadastros/produtos">
+              <Suspense fallback={<PaginaCarregando />}>
+                <ProdutosPage />
+              </Suspense>
+            </Protegida>
+          }
+        />
+        <Route
+          path="cadastros/clientes"
+          element={
+            <Protegida rota="/cadastros/clientes">
+              <Suspense fallback={<PaginaCarregando />}>
+                <ClientesPage />
+              </Suspense>
+            </Protegida>
+          }
+        />
+        <Route
+          path="cadastros/veiculos"
+          element={
+            <Protegida rota="/cadastros/veiculos">
+              <Suspense fallback={<PaginaCarregando />}>
+                <VeiculosPage />
+              </Suspense>
+            </Protegida>
+          }
+        />
+        <Route
+          path="cadastros/funcionarios"
+          element={
+            <Protegida rota="/cadastros/funcionarios">
+              <Suspense fallback={<PaginaCarregando />}>
+                <FuncionariosPage />
+              </Suspense>
+            </Protegida>
+          }
+        />
         <Route path="*" element={<Protegida rota="/"><ConsoleMovimentacao /></Protegida>} />
       </Route>
     </Routes>

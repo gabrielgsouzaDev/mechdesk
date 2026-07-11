@@ -1,13 +1,21 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { MovimentacaoDto } from "./dto/movimentacao.dto";
-import { ConfiguracaoDto, DevolucaoDto, EmprestimoDto, PerdaDto } from "./dto/emprestimo.dto";
+import {
+  ConfiguracaoDto,
+  DevolucaoDto,
+  EmprestimoDto,
+  PerdaDto,
+  type StatusEmprestimoQuery,
+} from "./dto/emprestimo.dto";
 
 type ResultadoMov = { movimentacaoId: string; saldoApos: number };
 type ResultadoEmprestimo = { emprestimoId: string; movimentacaoId: string; saldoApos: number };
 
 // Traduz os códigos de erro de domínio (raise exception no Postgres) em HTTP.
-function traduzirErroRpc(err: unknown): never {
+// Exportada para teste unitário: é a fronteira que impede texto bruto do
+// banco de vazar para o cliente.
+export function traduzirErroRpc(err: unknown): never {
   const msg = err instanceof Error ? err.message : String(err);
   if (msg.includes("ESTOQUE_INSUFICIENTE")) throw new ConflictException("Estoque insuficiente para esta saída.");
   if (msg.includes("FERRAMENTA_INDISPONIVEL")) throw new ConflictException("Não há unidades disponíveis desta ferramenta.");
@@ -102,11 +110,16 @@ export class EstoqueService {
     }
   }
 
-  /** Pendências de ferramenta. Sem filtro, traz tudo (Pendências mostra por status no front). */
-  listarEmprestimos(status?: string) {
+  /**
+   * Pendências de ferramenta. Sem filtro, traz tudo (Pendências mostra por
+   * status no front). `status` já chegou validado pelo DTO de query; o
+   * `take` blinda o banco contra crescimento sem limite do histórico.
+   */
+  listarEmprestimos(status?: StatusEmprestimoQuery) {
     return this.prisma.emprestimo.findMany({
-      where: status ? { status: status as never } : undefined,
+      where: status ? { status } : undefined,
       orderBy: { retiradoEm: "desc" },
+      take: 500,
       include: {
         produto: { select: { sku: true, descricao: true } },
         funcionario: { select: { nome: true, cargo: true } },
@@ -116,8 +129,14 @@ export class EstoqueService {
     });
   }
 
+  /**
+   * Configuração operacional. Banco sem o seed (linha 'default' ausente) não
+   * pode virar 500: devolve o padrão de 24h — o mesmo fallback que a RPC
+   * `registrar_emprestimo` aplica via coalesce.
+   */
   async getConfig() {
-    return this.prisma.configuracao.findUniqueOrThrow({ where: { id: "default" } });
+    const config = await this.prisma.configuracao.findUnique({ where: { id: "default" } });
+    return config ?? { id: "default", prazoEmprestimoHoras: 24 };
   }
 
   async updateConfig(dto: ConfiguracaoDto) {
