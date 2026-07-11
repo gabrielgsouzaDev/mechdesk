@@ -7,6 +7,6 @@ export class MeController {
   /** Identidade do usuário logado (resolvida do JWT pelo AuthGuard). */
   @Get()
   me(@CurrentUsuario() u: Usuario) {
-    return { id: u.id, nome: u.nome, papel: u.papel, email: u.email };
+    return { id: u.id, nome: u.nome, papel: u.papel, email: u.email, tenantId: u.tenantId };
   }
 }

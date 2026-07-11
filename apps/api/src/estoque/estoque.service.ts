@@ -31,6 +31,11 @@ export function traduzirErroRpc(err: unknown): never {
   throw err instanceof Error ? err : new Error(msg);
 }
 
+// MULTI-TENANT: todo método recebe o tenantId do CHAMADOR como primeiro
+// parâmetro (o controller extrai do usuário autenticado — nunca do body ou
+// da query). O isolamento de escrita mora nas RPCs (filtro por tenant sob
+// FOR UPDATE); aqui a responsabilidade é repassar o tenant certo e escopar
+// todas as leituras.
 @Injectable()
 export class EstoqueService {
   constructor(private readonly prisma: PrismaService) {}
@@ -41,7 +46,7 @@ export class EstoqueService {
    * gravação no ledger numa transação) mora no Postgres — a API só
    * traduz os erros de domínio em respostas HTTP.
    */
-  async registrar(dto: MovimentacaoDto, usuarioId: string): Promise<ResultadoMov> {
+  async registrar(tenantId: string, dto: MovimentacaoDto, usuarioId: string): Promise<ResultadoMov> {
     try {
       const [row] = await this.prisma.$queryRaw<{ registrar_movimentacao_estoque: ResultadoMov }[]>`
         SELECT registrar_movimentacao_estoque(
@@ -50,7 +55,8 @@ export class EstoqueService {
           ${dto.tipo}::text,
           ${usuarioId}::text,
           ${dto.ordemServicoId ?? null}::text,
-          ${dto.motivo ?? null}::text
+          ${dto.motivo ?? null}::text,
+          ${tenantId}::text
         ) AS registrar_movimentacao_estoque
       `;
       return row.registrar_movimentacao_estoque;
@@ -60,7 +66,7 @@ export class EstoqueService {
   }
 
   /** Empréstimo de ferramenta (retirada): não altera o cache de estoque. */
-  async registrarEmprestimo(dto: EmprestimoDto, usuarioId: string): Promise<ResultadoEmprestimo> {
+  async registrarEmprestimo(tenantId: string, dto: EmprestimoDto, usuarioId: string): Promise<ResultadoEmprestimo> {
     try {
       const [row] = await this.prisma.$queryRaw<{ registrar_emprestimo: ResultadoEmprestimo }[]>`
         SELECT registrar_emprestimo(
@@ -69,7 +75,8 @@ export class EstoqueService {
           ${dto.funcionarioId}::text,
           ${usuarioId}::text,
           ${null}::int,
-          ${dto.motivo ?? null}::text
+          ${dto.motivo ?? null}::text,
+          ${tenantId}::text
         ) AS registrar_emprestimo
       `;
       return row.registrar_emprestimo;
@@ -79,13 +86,14 @@ export class EstoqueService {
   }
 
   /** Devolução de ferramenta: fecha a pendência. */
-  async registrarDevolucao(emprestimoId: string, dto: DevolucaoDto, usuarioId: string): Promise<ResultadoMov> {
+  async registrarDevolucao(tenantId: string, emprestimoId: string, dto: DevolucaoDto, usuarioId: string): Promise<ResultadoMov> {
     try {
       const [row] = await this.prisma.$queryRaw<{ registrar_devolucao: ResultadoMov }[]>`
         SELECT registrar_devolucao(
           ${emprestimoId}::text,
           ${usuarioId}::text,
-          ${dto.motivo ?? null}::text
+          ${dto.motivo ?? null}::text,
+          ${tenantId}::text
         ) AS registrar_devolucao
       `;
       return row.registrar_devolucao;
@@ -95,13 +103,14 @@ export class EstoqueService {
   }
 
   /** Perda de ferramenta emprestada: baixa definitiva (SAIDA) + fecha a pendência. */
-  async registrarPerda(emprestimoId: string, dto: PerdaDto, usuarioId: string): Promise<ResultadoMov> {
+  async registrarPerda(tenantId: string, emprestimoId: string, dto: PerdaDto, usuarioId: string): Promise<ResultadoMov> {
     try {
       const [row] = await this.prisma.$queryRaw<{ registrar_perda: ResultadoMov }[]>`
         SELECT registrar_perda(
           ${emprestimoId}::text,
           ${usuarioId}::text,
-          ${dto.motivo}::text
+          ${dto.motivo}::text,
+          ${tenantId}::text
         ) AS registrar_perda
       `;
       return row.registrar_perda;
@@ -111,13 +120,14 @@ export class EstoqueService {
   }
 
   /**
-   * Pendências de ferramenta. Sem filtro, traz tudo (Pendências mostra por
-   * status no front). `status` já chegou validado pelo DTO de query; o
-   * `take` blinda o banco contra crescimento sem limite do histórico.
+   * Pendências de ferramenta. Sem filtro de status, traz tudo DO TENANT
+   * (Pendências mostra por status no front). `status` já chegou validado
+   * pelo DTO de query; o `take` blinda o banco contra crescimento sem
+   * limite do histórico.
    */
-  listarEmprestimos(status?: StatusEmprestimoQuery) {
+  listarEmprestimos(tenantId: string, status?: StatusEmprestimoQuery) {
     return this.prisma.emprestimo.findMany({
-      where: status ? { status } : undefined,
+      where: { tenantId, ...(status ? { status } : {}) },
       orderBy: { retiradoEm: "desc" },
       take: 500,
       include: {
@@ -130,31 +140,36 @@ export class EstoqueService {
   }
 
   /**
-   * Configuração operacional. Banco sem o seed (linha 'default' ausente) não
-   * pode virar 500: devolve o padrão de 24h — o mesmo fallback que a RPC
-   * `registrar_emprestimo` aplica via coalesce.
+   * Configuração operacional do tenant. Tenant sem a linha (seed não rodou
+   * ou oficina recém-criada) não pode virar 500: devolve o padrão de 24h —
+   * o mesmo fallback que a RPC `registrar_emprestimo` aplica via coalesce.
    */
-  async getConfig() {
-    const config = await this.prisma.configuracao.findUnique({ where: { id: "default" } });
-    return config ?? { id: "default", prazoEmprestimoHoras: 24 };
+  async getConfig(tenantId: string) {
+    const config = await this.prisma.configuracao.findUnique({ where: { tenantId } });
+    return config ?? { tenantId, prazoEmprestimoHoras: 24 };
   }
 
-  async updateConfig(dto: ConfiguracaoDto) {
-    return this.prisma.configuracao.update({ where: { id: "default" }, data: dto });
+  /** Upsert: oficina sem linha de configuração ganha a sua na primeira gravação. */
+  updateConfig(tenantId: string, dto: ConfiguracaoDto) {
+    return this.prisma.configuracao.upsert({
+      where: { tenantId },
+      update: { prazoEmprestimoHoras: dto.prazoEmprestimoHoras },
+      create: { tenantId, prazoEmprestimoHoras: dto.prazoEmprestimoHoras },
+    });
   }
 
   /** Produtos com saldo (alimenta o console de movimentação). */
-  listarProdutos() {
+  listarProdutos(tenantId: string) {
     return this.prisma.produto.findMany({
-      where: { ativo: true },
+      where: { tenantId, ativo: true },
       orderBy: { descricao: "asc" },
     });
   }
 
   /** Histórico/log de movimentações (o ledger), mais recentes primeiro. */
-  listarMovimentacoes(produtoId?: string) {
+  listarMovimentacoes(tenantId: string, produtoId?: string) {
     return this.prisma.movimentacaoEstoque.findMany({
-      where: produtoId ? { produtoId } : undefined,
+      where: { tenantId, ...(produtoId ? { produtoId } : {}) },
       orderBy: { criadoEm: "desc" },
       take: 200,
       include: {
