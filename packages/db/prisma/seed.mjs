@@ -1,14 +1,29 @@
-// Seed mínimo: um admin e algumas peças.
+// Seed mínimo: tenant padrão, um admin e algumas peças.
 //   node prisma/seed.mjs  (com DATABASE_URL/DIRECT_URL no ambiente)
+// Multi-tenant: TODO registro semeado pertence ao tenant 'default'
+// (a oficina fundadora). Uniques de negócio são compostos por tenant.
 import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
+const TENANT = "default";
 
 async function main() {
-  await prisma.funcionario.upsert({
-    where: { cpf: "00000000000" },
+  await prisma.tenant.upsert({
+    where: { id: TENANT },
     update: {},
-    create: { nome: "Administrador", cpf: "00000000000", cargo: "Proprietário" },
+    create: { id: TENANT, nome: "Luciano Freios" },
+  });
+
+  await prisma.configuracao.upsert({
+    where: { tenantId: TENANT },
+    update: {},
+    create: { tenantId: TENANT, prazoEmprestimoHoras: 24 },
+  });
+
+  await prisma.funcionario.upsert({
+    where: { tenantId_cpf: { tenantId: TENANT, cpf: "00000000000" } },
+    update: {},
+    create: { tenantId: TENANT, nome: "Administrador", cpf: "00000000000", cargo: "Proprietário" },
   });
 
   const pecas = [
@@ -19,9 +34,9 @@ async function main() {
 
   for (const p of pecas) {
     await prisma.produto.upsert({
-      where: { sku: p.sku },
+      where: { tenantId_sku: { tenantId: TENANT, sku: p.sku } },
       update: {},
-      create: { ...p, controle: "RIGIDO", unidade: "UN", localizacao: "A-01" },
+      create: { ...p, tenantId: TENANT, controle: "RIGIDO", unidade: "UN", localizacao: "A-01" },
     });
   }
 

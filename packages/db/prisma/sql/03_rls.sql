@@ -36,6 +36,26 @@ end $$;
 -- foi removida. Com login obrigatório, o Realtime entrega eventos
 -- ao papel `authenticated` — anon não lê mais nada.
 -- ─────────────────────────────────────────────────────────────
+
+-- ─────────────────────────────────────────────────────────────
+-- MULTI-TENANT (Etapa 5) — política futura, DOCUMENTADA e NÃO ativada.
+-- Hoje o isolamento por tenant é garantido em duas camadas:
+--   1. API: toda query escopada pelo tenantId do usuário autenticado;
+--   2. RPCs: filtro por "tenantId" dentro da transação (FOR UPDATE).
+-- Quando o multi-tenant pleno for ativado (onboarding de outras
+-- oficinas), a leitura direta do browser TAMBÉM precisa ser isolada.
+-- Pré-requisito: custom claim `tenant_id` no JWT do Supabase Auth
+-- (via Auth Hook "Custom Access Token"). Aí a política de leitura de
+-- cada tabela com coluna "tenantId" troca `using (true)` por:
+--
+--   create policy "leitura_do_proprio_tenant" on <tabela>
+--     for select to authenticated
+--     using ("tenantId" = (auth.jwt() ->> 'tenant_id'));
+--
+-- Enquanto a claim não existir, ativar essa política DERRUBARIA o
+-- Realtime (jwt sem tenant_id → nenhuma linha visível). Por isso a
+-- troca acontece junto com o onboarding, não antes.
+-- ─────────────────────────────────────────────────────────────
 do $$
 declare t text;
 begin

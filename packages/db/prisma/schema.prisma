@@ -5,6 +5,13 @@
 //   - `movimentacoes_estoque` = ledger imutável (fonte da verdade do log).
 //   - `produtos.estoqueAtual` = cache atualizado na mesma transação.
 //   - Saída pode referenciar uma OS (peça que foi pro conserto).
+//
+//  MULTI-TENANT (Etapa 5): todo dado operacional pertence a um Tenant
+//  (oficina). `tenantId` é NOT NULL com DEFAULT 'default' — a oficina
+//  atual opera no tenant 'default' sem mudança de comportamento.
+//  Unicidade de negócio (sku, cpf, cnpj, placa…) é POR TENANT: duas
+//  oficinas podem ter o mesmo SKU. A API escopa toda query pelo tenant
+//  do usuário autenticado; as RPCs filtram por tenant na transação.
 // ════════════════════════════════════════════════════════════════
 
 generator client {
@@ -15,6 +22,31 @@ datasource db {
   provider  = "postgresql"
   url       = env("DATABASE_URL")
   directUrl = env("DIRECT_URL")
+}
+
+// ───────────────────────── Tenancy ─────────────────────────
+// Uma linha por oficina cliente do SaaS. A oficina fundadora vive no
+// id 'default' (semeado na migração) — nenhum onboarding é exigido
+// para o modo single-tenant atual.
+
+model Tenant {
+  id       String   @id @default(uuid())
+  nome     String
+  ativo    Boolean  @default(true)
+  criadoEm DateTime @default(now())
+
+  usuarios      Usuario[]
+  funcionarios  Funcionario[]
+  clientes      Cliente[]
+  veiculos      Veiculo[]
+  produtos      Produto[]
+  movimentacoes MovimentacaoEstoque[]
+  emprestimos   Emprestimo[]
+  configuracao  Configuracao?
+  ordens        OrdemServico[]
+  itensOS       ItemOrdemServico[]
+
+  @@map("tenants")
 }
 
 // ───────────────────────── Pessoas & Acesso ─────────────────────────
@@ -29,9 +61,13 @@ enum PapelUsuario {
 
 model Usuario {
   id            String       @id @default(uuid())
+  tenantId      String       @default("default")
+  tenant        Tenant       @relation(fields: [tenantId], references: [id])
+  // authUserId continua ÚNICO GLOBAL: uma conta de auth pertence a
+  // exatamente um usuário/tenant — é a âncora que resolve o tenant no login.
   authUserId    String       @unique // auth.users.id (Supabase Auth)
   nome          String
-  email         String?      @unique
+  email         String?
   papel         PapelUsuario
   ativo         Boolean      @default(true)
   funcionarioId String?      @unique
@@ -42,14 +78,18 @@ model Usuario {
   emprestimosRetirados  Emprestimo[]           @relation("EmprestimosRetirada")
   emprestimosFechados   Emprestimo[]           @relation("EmprestimosFechamento")
 
+  @@unique([tenantId, email])
+  @@index([tenantId])
   @@index([papel, ativo])
   @@map("usuarios")
 }
 
 model Funcionario {
   id       String   @id @default(uuid())
+  tenantId String   @default("default")
+  tenant   Tenant   @relation(fields: [tenantId], references: [id])
   nome     String
-  cpf      String   @unique
+  cpf      String
   email    String?
   cargo    String? // texto livre: "Mecânico", "Secretária", "Proprietário"…
   ativo    Boolean  @default(true)
@@ -60,6 +100,8 @@ model Funcionario {
   itensExecutados    ItemOrdemServico[]
   emprestimos        Emprestimo[]
 
+  @@unique([tenantId, cpf])
+  @@index([tenantId])
   @@index([ativo])
   @@map("funcionarios")
 }
@@ -73,10 +115,12 @@ enum TipoPessoa {
 
 model Cliente {
   id           String     @id @default(uuid())
+  tenantId     String     @default("default")
+  tenant       Tenant     @relation(fields: [tenantId], references: [id])
   tipo         TipoPessoa
   razaoSocial  String
   nomeFantasia String?
-  cnpjCpf      String     @unique
+  cnpjCpf      String
   inscEstadual String?
   email        String?
   telefone     String?
@@ -91,17 +135,21 @@ model Cliente {
   veiculos Veiculo[]
   ordens   OrdemServico[]
 
+  @@unique([tenantId, cnpjCpf])
+  @@index([tenantId])
   @@index([razaoSocial])
   @@map("clientes")
 }
 
 model Veiculo {
   id        String   @id @default(uuid())
-  placa     String   @unique
+  tenantId  String   @default("default")
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  placa     String
   modelo    String
   marca     String?
   anoFab    Int?
-  chassi    String?  @unique
+  chassi    String?
   renavam   String?
   tipo      String?
   kmAtual   Int?
@@ -111,6 +159,9 @@ model Veiculo {
 
   ordens OrdemServico[]
 
+  @@unique([tenantId, placa])
+  @@unique([tenantId, chassi])
+  @@index([tenantId])
   @@index([clienteId])
   @@map("veiculos")
 }
@@ -133,7 +184,9 @@ enum CategoriaProduto {
 
 model Produto {
   id            String              @id @default(uuid())
-  sku           String              @unique
+  tenantId      String              @default("default")
+  tenant        Tenant              @relation(fields: [tenantId], references: [id])
+  sku           String
   descricao     String
   ncm           String?
   unidade       String              @default("UN")
@@ -152,6 +205,8 @@ model Produto {
   itensOS       ItemOrdemServico[]
   emprestimos   Emprestimo[]
 
+  @@unique([tenantId, sku])
+  @@index([tenantId])
   @@index([descricao])
   @@index([estoqueAtual, estoqueMinimo])
   @@index([categoria])
@@ -170,6 +225,8 @@ enum TipoMovimentacao {
 // Ledger imutável: fonte da verdade do estoque e do histórico/log.
 model MovimentacaoEstoque {
   id             String           @id @default(uuid())
+  tenantId       String           @default("default")
+  tenant         Tenant           @relation(fields: [tenantId], references: [id])
   produtoId      String
   produto        Produto          @relation(fields: [produtoId], references: [id])
   tipo           TipoMovimentacao
@@ -187,6 +244,7 @@ model MovimentacaoEstoque {
   motivo         String?
   criadoEm       DateTime         @default(now())
 
+  @@index([tenantId, criadoEm])
   @@index([produtoId, criadoEm])
   @@index([tipo, criadoEm])
   @@map("movimentacoes_estoque")
@@ -203,6 +261,8 @@ enum StatusEmprestimo {
 
 model Emprestimo {
   id                  String           @id @default(uuid())
+  tenantId            String           @default("default")
+  tenant              Tenant           @relation(fields: [tenantId], references: [id])
   produtoId           String
   produto             Produto          @relation(fields: [produtoId], references: [id])
   funcionarioId       String
@@ -221,15 +281,19 @@ model Emprestimo {
 
   movimentacoes MovimentacaoEstoque[]
 
+  @@index([tenantId, status])
   @@index([status])
   @@index([produtoId])
   @@index([funcionarioId])
   @@map("emprestimos")
 }
 
-// Linha única de configuração operacional (hoje só o prazo padrão de empréstimo).
+// Configuração operacional POR TENANT (hoje só o prazo padrão de empréstimo).
+// A PK é o próprio tenantId: uma linha por oficina — a linha 'default'
+// preserva o comportamento single-tenant atual.
 model Configuracao {
-  id                   String @id @default("default")
+  tenantId             String @id @default("default")
+  tenant               Tenant @relation(fields: [tenantId], references: [id])
   prazoEmprestimoHoras Int    @default(24)
 
   @@map("configuracoes")
@@ -249,7 +313,11 @@ enum StatusOS {
 
 model OrdemServico {
   id                String       @id @default(uuid())
-  numero            Int          @unique @default(autoincrement())
+  tenantId          String       @default("default")
+  tenant            Tenant       @relation(fields: [tenantId], references: [id])
+  // Sequência global, unicidade por tenant: o número não vaza informação
+  // entre oficinas e continua servindo de referência humana.
+  numero            Int          @default(autoincrement())
   clienteId         String
   cliente           Cliente      @relation(fields: [clienteId], references: [id])
   veiculoId         String
@@ -265,6 +333,8 @@ model OrdemServico {
   itens         ItemOrdemServico[]
   movimentacoes MovimentacaoEstoque[]
 
+  @@unique([tenantId, numero])
+  @@index([tenantId])
   @@index([status])
   @@index([clienteId])
   @@map("ordens_servico")
@@ -277,6 +347,8 @@ enum TipoItemOS {
 
 model ItemOrdemServico {
   id             String       @id @default(uuid())
+  tenantId       String       @default("default")
+  tenant         Tenant       @relation(fields: [tenantId], references: [id])
   ordemServicoId String
   ordemServico   OrdemServico @relation(fields: [ordemServicoId], references: [id], onDelete: Cascade)
   tipo           TipoItemOS
@@ -287,6 +359,7 @@ model ItemOrdemServico {
   executorId     String?
   executor       Funcionario? @relation(fields: [executorId], references: [id])
 
+  @@index([tenantId])
   @@index([ordemServicoId])
   @@map("itens_ordem_servico")
 }
