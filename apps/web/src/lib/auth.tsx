@@ -5,7 +5,9 @@ import { isDemoMode, isLiveMode } from "./config";
 import { api } from "./api";
 import { OPERADOR } from "./mock";
 
-export type Operador = { id: string; nome: string; papel: string; email?: string | null };
+// tenantId identifica a oficina do operador (multi-tenant — Etapa 5).
+// Opcional no tipo: o modo demo não tem tenant e a UI não depende dele.
+export type Operador = { id: string; nome: string; papel: string; email?: string | null; tenantId?: string };
 
 type AuthState = {
   carregando: boolean;

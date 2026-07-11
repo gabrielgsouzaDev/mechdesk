@@ -74,11 +74,35 @@ segurança que a Etapa 5 (permissões dinâmicas) exige.*
    não rodou (deve devolver o padrão de 24h); `listarEmprestimos` sem `take`
    (crescimento sem limite); validar `status` recebido em query string.
 
+### ✅ Etapa 5a — Multi-tenant nativo 🏢 (2026-07-11)
+*Antecipada e elevada em relação ao plano original (5.4 era "preparação sem
+ativar"): o isolamento por tenant foi entregue ATIVO em todas as camadas de
+servidor, operando single-tenant no tenant `'default'` sem mudança de
+comportamento para a oficina atual.*
+- Tabela `tenants` + `tenantId TEXT NOT NULL DEFAULT 'default'` em TODAS as
+  tabelas operacionais (backfill na própria migração); FKs e índices por tenant
+- Unicidade de negócio virou composta por tenant: `(tenantId, sku|cpf|cnpjCpf|
+  placa|chassi|email|numero)` — `authUserId` segue único global (âncora
+  login→tenant no AuthGuard)
+- `configuracoes` deixou de ser linha única global: PK = `tenantId` (uma linha
+  por oficina; `getConfig` faz fallback de 24h e `updateConfig` virou upsert)
+- RPCs (`registrar_movimentacao_estoque`, `registrar_emprestimo`,
+  `registrar_devolucao`, `registrar_perda`) ganharam `p_tenant_id` e filtram
+  por tenant DENTRO da transação (`FOR UPDATE` continua por linha de produto);
+  id de outro tenant = "não encontrado" (cross-over não vaza existência)
+- API: `CrudService` e `EstoqueService` exigem o tenant do usuário autenticado
+  em todo método (nunca do body/query); escrita cross-tenant → 404 via
+  `updateMany`/`deleteMany` com `{ id, tenantId }`; `GET /me` devolve `tenantId`
+- TDD: 21 testes novos simulando ataques de Tenant Cross-Over (inquilino A
+  lendo/escrevendo/excluindo dados do B) — 44 na API, 73 no total
+- Política RLS por tenant (`tenant_id` como custom claim do JWT) documentada em
+  `03_rls.sql` — ativação junto com o onboarding de outras oficinas
+
 ## Próxima grande fase
 
-### Etapa 5 — Permissões, RBAC e Gestão Admin ⚙️ (ótica multi-tenant / saas-pipeline)
-*Depende da Etapa 2 e da Etapa 4.5. O SaaS mensal já é direção declarada:
-a matriz de permissões nasce pronta para `tenant_id`, mesmo operando single-tenant.*
+### Etapa 5b — Permissões, RBAC dinâmico e Gestão Admin ⚙️
+*Depende da Etapa 2, da Etapa 4.5 e da 5a (toda tabela nova já nasce com
+`tenant_id` — agora obrigatório por padrão do schema).*
 
 **5.1 — Modelo de dados de permissões**
 - Matriz papel × recurso × ação sai do código e vira tabela (`permissoes`):
@@ -98,15 +122,9 @@ a matriz de permissões nasce pronta para `tenant_id`, mesmo operando single-ten
   trocar papel) na mesma tela; auditoria: mudanças de permissão registradas
   (padrão insert-only, mesmo espírito do ledger)
 
-**5.4 — Preparação multi-tenant (sem ativar)**
-- `tenant_id` nas 4 tabelas do núcleo operacional (`produtos`,
-  `movimentacoes_estoque`, `emprestimos`, `configuracoes`) com `DEFAULT 'default'`
-- `configuracoes` deixa de ser linha única global: PK passa a (`tenant_id`) —
-  hoje uma linha 'default', amanhã uma por oficina
-- RPCs ganham parâmetro `p_tenant_id` (default `'default'`) e filtram por ele
-  dentro da transação — a trava `FOR UPDATE` continua por linha de produto
-- Política RLS futura: `tenant_id = auth.jwt() ->> 'tenant_id'` (documentada,
-  não ativada; hoje segue "leitura autenticada, escrita via API")
+**5.4 — Preparação multi-tenant** — ✅ entregue (e ampliada) na Etapa 5a:
+`tenant_id` em TODAS as tabelas (não só as 4 do núcleo), RPCs escopadas,
+`configuracoes` por tenant e RLS futura documentada.
 
 ### Etapa 6 — Dashboard do Admin 📊
 *Depende das etapas 3 e 4 (dados + filtros). Sem valores financeiros.*

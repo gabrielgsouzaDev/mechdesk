@@ -75,5 +75,5 @@ export const EMPRESTIMOS_MOCK: Emprestimo[] = [
   },
 ];
 
-export const CONFIG_MOCK: Configuracao = { id: "default", prazoEmprestimoHoras: 24 };
+export const CONFIG_MOCK: Configuracao = { tenantId: "default", prazoEmprestimoHoras: 24 };
 

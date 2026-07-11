@@ -92,7 +92,8 @@ export type Emprestimo = {
   usuarioFechamento?: { nome: string } | null;
 };
 
+// Multi-tenant: a configuração é uma linha por oficina — a PK é o tenantId.
 export type Configuracao = {
-  id: string;
+  tenantId: string;
   prazoEmprestimoHoras: number;
 };
