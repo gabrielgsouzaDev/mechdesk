@@ -2,11 +2,16 @@ import { Package } from "lucide-react";
 import { CrudPage, type ChipGroup, type ColumnDef, type FieldDef } from "@/components/CrudPage";
 import { Badge } from "@/components/ui/badge";
 import { useEntityData } from "@/hooks/useEntityData";
+import { useAuth } from "@/lib/auth";
 import { PRODUTOS_MOCK } from "@/lib/mock";
 import type { Produto } from "@/lib/types";
 
-// Preços ficam FORA da UI por decisão de escopo (Etapa 1 — faxina).
-// O banco continua capturando custo/venda; reativação junto com o módulo financeiro.
+// Preços de volta à UI (Etapa 6 — Fiscal): nota precisa de valor. O banco
+// capturou custo/venda desde a Fundação; aqui só reexibimos e editamos.
+// Decimal do Prisma chega como string — normaliza antes de formatar/ordenar.
+const brl = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
+const numero = (v: number | string | undefined) => (v == null ? 0 : Number(v));
+
 const columns: ColumnDef<Produto>[] = [
   { header: "SKU", cell: (p) => <span className="font-medium text-zinc-300">{p.sku}</span>, className: "w-28", sortValue: (p) => p.sku },
   { header: "Descrição", cell: (p) => <span className="font-medium text-zinc-100">{p.descricao}</span>, sortValue: (p) => p.descricao },
@@ -20,6 +25,12 @@ const columns: ColumnDef<Produto>[] = [
     ),
     className: "w-36",
     sortValue: (p) => p.estoqueAtual,
+  },
+  {
+    header: "Venda",
+    cell: (p) => <span className="tabular-nums text-zinc-300">{brl.format(numero(p.precoVenda))}</span>,
+    className: "w-28",
+    sortValue: (p) => numero(p.precoVenda),
   },
   {
     header: "Controle",
@@ -65,9 +76,19 @@ const fields: FieldDef<Produto>[] = [
   ] },
   { name: "estoqueAtual", label: "Estoque atual", type: "number" },
   { name: "estoqueMinimo", label: "Estoque mínimo", type: "number" },
+  { name: "precoVenda", label: "Preço de venda (R$)", type: "number" },
+];
+
+// Custo é dado do dono (ADMIN vê custo — Etapa 6): o campo só existe no form
+// do ADMIN. Na edição pelo ALMOXARIFADO o valor persiste intacto — o form
+// espalha a linha inteira e o campo ausente não é sobrescrito.
+const fieldsAdmin: FieldDef<Produto>[] = [
+  ...fields,
+  { name: "precoCusto", label: "Preço de custo (R$)", type: "number" },
 ];
 
 export function ProdutosPage() {
+  const { operador } = useAuth();
   const entity = useEntityData<Produto>({ key: "produtos", endpoint: "/produtos", seed: PRODUTOS_MOCK });
   return (
     <CrudPage
@@ -76,10 +97,9 @@ export function ProdutosPage() {
       icon={<Package className="size-5" />}
       entity={entity}
       columns={columns}
-      fields={fields}
+      fields={operador?.papel === "ADMIN" ? fieldsAdmin : fields}
       chipGroups={chipGroups}
       searchKeys={["descricao", "sku"]}
-      // precoCusto/precoVenda seguem no payload (ocultos) — a API os exige e o banco os guarda.
       makeEmpty={() => ({ unidade: "UN", controle: "RIGIDO" as const, categoria: "PECA" as const, estoqueAtual: 0, estoqueMinimo: 0, precoCusto: 0, precoVenda: 0 })}
     />
   );
