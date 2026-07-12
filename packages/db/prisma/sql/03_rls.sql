@@ -32,6 +32,23 @@ end $$;
 -- escrita pelo browser é negada por padrão. A API (service role) ignora RLS.
 
 -- ─────────────────────────────────────────────────────────────
+-- Tabelas de GESTÃO (Etapa 5a/5b): tenants, permissoes, permissoes_log.
+-- RLS ligada SEM nenhuma policy = browser não lê nem escreve NADA
+-- (deny-by-default do Postgres); só a API (service role) acessa.
+-- O front nunca consulta essas tabelas direto: permissões chegam
+-- via GET /me e a tela Admin fala com a API. Sem esta trava, o
+-- schema public exposto pelo PostgREST deixaria a matriz de
+-- permissões legível/gravável com a chave anon.
+-- ─────────────────────────────────────────────────────────────
+do $$
+declare t text;
+begin
+  foreach t in array array['tenants','permissoes','permissoes_log'] loop
+    execute format('alter table if exists %I enable row level security;', t);
+  end loop;
+end $$;
+
+-- ─────────────────────────────────────────────────────────────
 -- Dívida paga (task Autenticação): a leitura anônima temporária
 -- foi removida. Com login obrigatório, o Realtime entrega eventos
 -- ao papel `authenticated` — anon não lê mais nada.
