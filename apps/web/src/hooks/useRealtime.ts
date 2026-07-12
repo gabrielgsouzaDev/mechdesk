@@ -9,8 +9,11 @@ export function useRealtimeInvalidate(channel: string, table: string, queryKey: 
   const qc = useQueryClient();
   useEffect(() => {
     if (!hasSupabaseConfig || !isLiveMode) return;
+    // Sufixo único por montagem: o supabase-js reusa o canal por tópico e
+    // proíbe .on() após subscribe() — dois consumidores simultâneos do mesmo
+    // canal (ex.: AppShell + Pendências) ou o remount do StrictMode quebrariam.
     const ch = supabase
-      .channel(channel)
+      .channel(`${channel}:${crypto.randomUUID()}`)
       .on("postgres_changes", { event: "*", schema: "public", table }, () => {
         qc.invalidateQueries({ queryKey });
       })
