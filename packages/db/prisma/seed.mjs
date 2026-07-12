@@ -26,6 +26,28 @@ async function main() {
     create: { tenantId: TENANT, nome: "Administrador", cpf: "00000000000", cargo: "Proprietário" },
   });
 
+  // Matriz de permissões vigente (Etapa 5b) — espelha a MATRIZ_PADRAO da API.
+  // createMany + skipDuplicates: idempotente sem apagar ajustes do Admin.
+  // O recurso "admin" não é semeado: trava anti-lockout vive na API.
+  const RECURSOS = ["movimentacao", "historico", "pendencias", "produtos", "clientes", "veiculos", "funcionarios"];
+  const ACOES = ["VER", "CRIAR", "EDITAR", "EXCLUIR"];
+  const permitidoPara = (papel, recurso) =>
+    papel === "ADMIN" ? true : recurso !== "funcionarios";
+  await prisma.permissao.createMany({
+    data: ["ADMIN", "ALMOXARIFADO"].flatMap((papel) =>
+      RECURSOS.flatMap((recurso) =>
+        ACOES.map((acao) => ({
+          tenantId: TENANT,
+          papel,
+          recurso,
+          acao,
+          permitido: permitidoPara(papel, recurso),
+        })),
+      ),
+    ),
+    skipDuplicates: true,
+  });
+
   const pecas = [
     { sku: "PAT-001", descricao: "Patinho de freio caminhão", precoCusto: 45, precoVenda: 89.9, estoqueAtual: 24, estoqueMinimo: 10 },
     { sku: "LON-002", descricao: "Lona de freio dianteira", precoCusto: 60, precoVenda: 120, estoqueAtual: 8, estoqueMinimo: 6 },

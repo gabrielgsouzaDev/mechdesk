@@ -45,6 +45,8 @@ model Tenant {
   configuracao  Configuracao?
   ordens        OrdemServico[]
   itensOS       ItemOrdemServico[]
+  permissoes    Permissao[]
+  permissoesLog PermissaoLog[]
 
   @@map("tenants")
 }
@@ -77,6 +79,7 @@ model Usuario {
   movimentacoes         MovimentacaoEstoque[]
   emprestimosRetirados  Emprestimo[]           @relation("EmprestimosRetirada")
   emprestimosFechados   Emprestimo[]           @relation("EmprestimosFechamento")
+  permissoesAlteradas   PermissaoLog[]
 
   @@unique([tenantId, email])
   @@index([tenantId])
@@ -297,6 +300,51 @@ model Configuracao {
   prazoEmprestimoHoras Int    @default(24)
 
   @@map("configuracoes")
+}
+
+// ───────────────────────── Permissões (RBAC dinâmico) ─────────────────────────
+// Etapa 5b: a matriz papel × recurso × ação sai do código e vira dado POR
+// TENANT. O que não tem linha aqui cai na MATRIZ PADRÃO em código (API),
+// que reproduz o RBAC hardcoded anterior — ausência de seed nunca quebra.
+// O recurso "admin" NÃO é configurável (trava anti-lockout na API).
+
+enum AcaoPermissao {
+  VER
+  CRIAR
+  EDITAR
+  EXCLUIR
+}
+
+model Permissao {
+  id        String        @id @default(uuid())
+  tenantId  String        @default("default")
+  tenant    Tenant        @relation(fields: [tenantId], references: [id])
+  papel     PapelUsuario
+  recurso   String // slug do vocabulário da API (movimentacao, historico, …)
+  acao      AcaoPermissao
+  permitido Boolean       @default(false)
+
+  @@unique([tenantId, papel, recurso, acao])
+  @@index([tenantId, papel])
+  @@map("permissoes")
+}
+
+// Auditoria de mudanças de permissão: INSERT-ONLY (mesmo espírito do ledger
+// de estoque) — cada linha é "quem deixou/qual valor passou a valer, quando".
+model PermissaoLog {
+  id        String        @id @default(uuid())
+  tenantId  String        @default("default")
+  tenant    Tenant        @relation(fields: [tenantId], references: [id])
+  papel     PapelUsuario
+  recurso   String
+  acao      AcaoPermissao
+  permitido Boolean // valor que passou a valer
+  usuarioId String // quem alterou (resolvido do JWT, nunca do cliente)
+  usuario   Usuario       @relation(fields: [usuarioId], references: [id])
+  criadoEm  DateTime      @default(now())
+
+  @@index([tenantId, criadoEm])
+  @@map("permissoes_log")
 }
 
 // ───────────────────────── Ordens de Serviço ─────────────────────────

@@ -7,7 +7,7 @@ import { PendenciasPage } from "@/features/almoxarifado/PendenciasPage";
 import { MovimentacoesPage } from "@/features/estoque/MovimentacoesPage";
 import { LoginPage } from "@/features/auth/LoginPage";
 import { useAuth } from "@/lib/auth";
-import { podeAcessar, primeiraRotaPermitida } from "@/lib/permissions";
+import { podeAcessarComMapa, primeiraRotaPermitidaComMapa } from "@/lib/permissions";
 import { Button } from "@/components/ui/button";
 
 // Cadastros saem do bundle principal: são telas secundárias ao fluxo diário
@@ -23,6 +23,9 @@ const VeiculosPage = lazy(() =>
 );
 const FuncionariosPage = lazy(() =>
   import("@/features/cadastros/FuncionariosPage").then((m) => ({ default: m.FuncionariosPage })),
+);
+const AdminPage = lazy(() =>
+  import("@/features/admin/AdminPage").then((m) => ({ default: m.AdminPage })),
 );
 
 // Skeleton do carregamento de rota lazy: ecoa a estrutura das telas de
@@ -49,12 +52,13 @@ function PaginaCarregando() {
   );
 }
 
-// Guard de rota: URL digitada na mão também respeita a matriz de papéis.
+// Guard de rota: URL digitada na mão também respeita a matriz — agora a
+// DINÂMICA (mapa do /me, editável pelo Admin); a estática é fallback do demo.
 // Sem acesso à rota → redireciona pra primeira permitida; sem nenhuma → aviso.
 function Protegida({ rota, children }: { rota: string; children: React.ReactNode }) {
   const { operador } = useAuth();
-  if (podeAcessar(operador?.papel, rota)) return <>{children}</>;
-  const destino = primeiraRotaPermitida(operador?.papel);
+  if (podeAcessarComMapa(operador?.papel, operador?.permissoes, rota)) return <>{children}</>;
+  const destino = primeiraRotaPermitidaComMapa(operador?.papel, operador?.permissoes);
   return destino ? <Navigate to={destino} replace /> : <SemAcesso />;
 }
 
@@ -149,6 +153,16 @@ export default function App() {
             <Protegida rota="/cadastros/funcionarios">
               <Suspense fallback={<PaginaCarregando />}>
                 <FuncionariosPage />
+              </Suspense>
+            </Protegida>
+          }
+        />
+        <Route
+          path="admin"
+          element={
+            <Protegida rota="/admin">
+              <Suspense fallback={<PaginaCarregando />}>
+                <AdminPage />
               </Suspense>
             </Protegida>
           }

@@ -5,7 +5,7 @@ import { PartialType } from "@nestjs/mapped-types";
 import type { Usuario } from "@lf/db";
 import { PrismaService } from "../prisma/prisma.service";
 import { CrudService } from "../common/crud.service";
-import { CurrentUsuario, Roles } from "../auth/decorators";
+import { CurrentUsuario, Permissao, Roles } from "../auth/decorators";
 
 class CreateVeiculoDto {
   @IsString() placa!: string;
@@ -33,11 +33,11 @@ class VeiculosService extends CrudService<unknown> {
 @Controller("veiculos")
 class VeiculosController {
   constructor(private readonly s: VeiculosService) {}
-  @Get() list(@CurrentUsuario() u: Usuario) { return this.s.list(u.tenantId); }
-  @Get(":id") get(@CurrentUsuario() u: Usuario, @Param("id") id: string) { return this.s.get(u.tenantId, id); }
-  @Post() create(@CurrentUsuario() u: Usuario, @Body() dto: CreateVeiculoDto) { return this.s.create(u.tenantId, dto); }
-  @Patch(":id") update(@CurrentUsuario() u: Usuario, @Param("id") id: string, @Body() dto: UpdateVeiculoDto) { return this.s.update(u.tenantId, id, dto); }
-  @Delete(":id") remove(@CurrentUsuario() u: Usuario, @Param("id") id: string) { return this.s.remove(u.tenantId, id); }
+  @Permissao("veiculos", "VER") @Get() list(@CurrentUsuario() u: Usuario) { return this.s.list(u.tenantId); }
+  @Permissao("veiculos", "VER") @Get(":id") get(@CurrentUsuario() u: Usuario, @Param("id") id: string) { return this.s.get(u.tenantId, id); }
+  @Permissao("veiculos", "CRIAR") @Post() create(@CurrentUsuario() u: Usuario, @Body() dto: CreateVeiculoDto) { return this.s.create(u.tenantId, dto); }
+  @Permissao("veiculos", "EDITAR") @Patch(":id") update(@CurrentUsuario() u: Usuario, @Param("id") id: string, @Body() dto: UpdateVeiculoDto) { return this.s.update(u.tenantId, id, dto); }
+  @Permissao("veiculos", "EXCLUIR") @Delete(":id") remove(@CurrentUsuario() u: Usuario, @Param("id") id: string) { return this.s.remove(u.tenantId, id); }
 }
 
 @Module({ controllers: [VeiculosController], providers: [VeiculosService] })

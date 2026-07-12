@@ -5,7 +5,7 @@ import { PartialType } from "@nestjs/mapped-types";
 import type { Usuario } from "@lf/db";
 import { PrismaService } from "../prisma/prisma.service";
 import { CrudService } from "../common/crud.service";
-import { CurrentUsuario, Roles } from "../auth/decorators";
+import { CurrentUsuario, Permissao, Roles } from "../auth/decorators";
 
 // Funcionário = pessoa da equipe (sem login). Cargo é texto livre.
 class CreateFuncionarioDto {
@@ -32,12 +32,14 @@ class FuncionariosService extends CrudService<unknown> {
 @Controller("funcionarios")
 class FuncionariosController {
   constructor(private readonly s: FuncionariosService) {}
+  // A listagem NÃO passa pela matriz dinâmica de propósito: é lookup de
+  // apoio da operação (pra quem se empresta ferramenta), não a tela de RH.
   @Roles("ADMIN", "ALMOXARIFADO")
   @Get() list(@CurrentUsuario() u: Usuario) { return this.s.list(u.tenantId); }
-  @Get(":id") get(@CurrentUsuario() u: Usuario, @Param("id") id: string) { return this.s.get(u.tenantId, id); }
-  @Post() create(@CurrentUsuario() u: Usuario, @Body() dto: CreateFuncionarioDto) { return this.s.create(u.tenantId, dto); }
-  @Patch(":id") update(@CurrentUsuario() u: Usuario, @Param("id") id: string, @Body() dto: UpdateFuncionarioDto) { return this.s.update(u.tenantId, id, dto); }
-  @Delete(":id") remove(@CurrentUsuario() u: Usuario, @Param("id") id: string) { return this.s.remove(u.tenantId, id); }
+  @Permissao("funcionarios", "VER") @Get(":id") get(@CurrentUsuario() u: Usuario, @Param("id") id: string) { return this.s.get(u.tenantId, id); }
+  @Permissao("funcionarios", "CRIAR") @Post() create(@CurrentUsuario() u: Usuario, @Body() dto: CreateFuncionarioDto) { return this.s.create(u.tenantId, dto); }
+  @Permissao("funcionarios", "EDITAR") @Patch(":id") update(@CurrentUsuario() u: Usuario, @Param("id") id: string, @Body() dto: UpdateFuncionarioDto) { return this.s.update(u.tenantId, id, dto); }
+  @Permissao("funcionarios", "EXCLUIR") @Delete(":id") remove(@CurrentUsuario() u: Usuario, @Param("id") id: string) { return this.s.remove(u.tenantId, id); }
 }
 
 @Module({ controllers: [FuncionariosController], providers: [FuncionariosService] })

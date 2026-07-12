@@ -98,33 +98,36 @@ comportamento para a oficina atual.*
 - Política RLS por tenant (`tenant_id` como custom claim do JWT) documentada em
   `03_rls.sql` — ativação junto com o onboarding de outras oficinas
 
-## Próxima grande fase
+### ✅ Etapa 5b — Permissões, RBAC dinâmico e Gestão Admin ⚙️ (2026-07-11)
+*Fecha a Etapa 5 (5a + 5b). A matriz papel × recurso × ação saiu do código e
+virou dado POR TENANT, com enforcement nas 3 camadas e tela de gestão.*
 
-### Etapa 5b — Permissões, RBAC dinâmico e Gestão Admin ⚙️
-*Depende da Etapa 2, da Etapa 4.5 e da 5a (toda tabela nova já nasce com
-`tenant_id` — agora obrigatório por padrão do schema).*
+**5.1 — Modelo de dados** — tabelas `permissoes` (estado vigente; unique
+`tenantId+papel+recurso+acao`) e `permissoes_log` (auditoria INSERT-ONLY,
+mesmo espírito do ledger); vocabulário: 8 recursos × `VER|CRIAR|EDITAR|EXCLUIR`;
+migração semeia a matriz anterior (sem regressão) e o `seed.mjs` é idempotente.
 
-**5.1 — Modelo de dados de permissões**
-- Matriz papel × recurso × ação sai do código e vira tabela (`permissoes`):
-  `papel`, `recurso`, `acao` (`VER|CRIAR|EDITAR|EXCLUIR`), `permitido`
-- **Toda tabela nova já nasce com `tenant_id TEXT NOT NULL DEFAULT 'default'`** +
-  índice composto — custo zero hoje, migração trivial amanhã
-- Seed reproduz a matriz atual (`permissions.ts`) para migração sem regressão
+**5.2 — Enforcement em 3 camadas** — API: decorator `@Permissao(recurso, acao)`
+consultado pelo AuthGuard via `PermissoesService` (cache 30s por tenant+papel,
+invalidado a cada gravação; `@Roles` continua como teto estático); tenant sem
+linhas cai na `MATRIZ_PADRAO` em código. Frontend: `GET /me` devolve o mapa do
+papel; menu e guard de rota leem de `podeAcessarComMapa` (matriz hardcoded =
+fallback do demo). RLS inalterado (escrita só via API).
 
-**5.2 — Enforcement em 3 camadas lendo do banco**
-- API: guard consulta `permissoes` (cache curto em memória, invalidado por Realtime)
-- Frontend: `GET /me` passa a devolver o mapa de permissões do papel; menu e
-  guard de rota leem do mapa (o `permissions.ts` hardcoded vira fallback do demo)
-- RLS continua bloqueando escrita direta do browser (inalterado)
+**5.3 — Tela do Admin (`/admin`, chunk lazy)** — matriz de checkboxes do
+ALMOXARIFADO com alterações pendentes e salvamento em lote auditado; gestão de
+usuários (criar login via Supabase Admin/service-role com rollback anti-órfão,
+trocar papel, ativar/desativar); trilha de auditoria na própria tela.
 
-**5.3 — Tela do Admin**
-- Checkboxes papel × recurso × ação; gestão de usuários (criar/desativar login,
-  trocar papel) na mesma tela; auditoria: mudanças de permissão registradas
-  (padrão insert-only, mesmo espírito do ledger)
+**Anti-lockout (trava dura em todas as camadas)** — o recurso `admin` não é
+configurável: sempre e somente ADMIN (banco/mapa forjado são ignorados); o
+admin não desativa nem despromove a própria conta.
 
 **5.4 — Preparação multi-tenant** — ✅ entregue (e ampliada) na Etapa 5a:
 `tenant_id` em TODAS as tabelas (não só as 4 do núcleo), RPCs escopadas,
 `configuracoes` por tenant e RLS futura documentada.
+
+## Próxima grande fase
 
 ### Etapa 6 — Dashboard do Admin 📊
 *Depende das etapas 3 e 4 (dados + filtros). Sem valores financeiros.*

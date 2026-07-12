@@ -12,6 +12,8 @@ import { ProdutosModule } from "./produtos/produtos.module";
 import { OrdensModule } from "./ordens/ordens.module";
 import { AuthGuard } from "./auth/auth.guard";
 import { MeController } from "./auth/me.controller";
+import { PermissoesModule } from "./permissoes/permissoes.module";
+import { UsuariosModule } from "./usuarios/usuarios.module";
 
 @Module({
   imports: [
@@ -20,6 +22,9 @@ import { MeController } from "./auth/me.controller";
     // Rate limiting global: 100 req/min por IP (anti abuso/brute-force).
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 100 }]),
     PrismaModule,
+    // RBAC dinâmico (Etapa 5b): matriz de permissões por tenant + gestão admin
+    PermissoesModule,
+    UsuariosModule,
     // Fase 1 — cadastros
     FuncionariosModule,
     ClientesModule,

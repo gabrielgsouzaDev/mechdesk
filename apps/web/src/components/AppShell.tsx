@@ -1,9 +1,9 @@
 import { NavLink, Outlet } from "react-router-dom";
-import { Disc3, ArrowLeftRight, History, ClipboardList, Package, Building2, Truck, Users, LogOut, AlertTriangle } from "lucide-react";
+import { Disc3, ArrowLeftRight, History, ClipboardList, Package, Building2, Truck, Users, LogOut, AlertTriangle, ShieldCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { isLiveMode } from "@/lib/config";
 import { useAuth } from "@/lib/auth";
-import { podeAcessar } from "@/lib/permissions";
+import { podeAcessarComMapa } from "@/lib/permissions";
 import { useFerramentaria } from "@/hooks/useFerramentaria";
 
 type NavItem = { to: string; label: string; icon: typeof Package; end?: boolean };
@@ -25,6 +25,10 @@ const NAV: { secao: string; itens: NavItem[] }[] = [
       { to: "/cadastros/funcionarios", label: "Funcionários", icon: Users },
     ],
   },
+  {
+    secao: "Administração",
+    itens: [{ to: "/admin", label: "Gestão", icon: ShieldCheck }],
+  },
 ];
 
 const PAPEL_LABEL: Record<string, string> = {
@@ -37,11 +41,12 @@ export function AppShell() {
   const { abertos } = useFerramentaria();
   const vencidos = abertos.filter((e) => new Date(e.prazoEm).getTime() < Date.now());
 
-  // Menu por papel: só mostra o que o operador pode acessar (a rota e a
-  // API reforçam a mesma matriz — esconder aqui é UX, não segurança).
+  // Menu pela matriz DINÂMICA do /me (Etapa 5b; estática = fallback demo):
+  // só mostra o que o operador pode acessar (a rota e a API reforçam a
+  // mesma matriz — esconder aqui é UX, não segurança).
   const gruposVisiveis = NAV.map((g) => ({
     ...g,
-    itens: g.itens.filter((i) => podeAcessar(operador?.papel, i.to)),
+    itens: g.itens.filter((i) => podeAcessarComMapa(operador?.papel, operador?.permissoes, i.to)),
   })).filter((g) => g.itens.length > 0);
 
   // Barra inferior mobile: mesma matriz de permissões, lista achatada.

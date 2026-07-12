@@ -5,9 +5,19 @@ import { isDemoMode, isLiveMode } from "./config";
 import { api } from "./api";
 import { OPERADOR } from "./mock";
 
+import type { MapaPermissoes } from "./permissions";
+
 // tenantId identifica a oficina do operador (multi-tenant — Etapa 5).
-// Opcional no tipo: o modo demo não tem tenant e a UI não depende dele.
-export type Operador = { id: string; nome: string; papel: string; email?: string | null; tenantId?: string };
+// permissoes = mapa dinâmico do RBAC (Etapa 5b), devolvido pelo GET /me;
+// ambos opcionais: o modo demo não tem tenant nem mapa (fallback estático).
+export type Operador = {
+  id: string;
+  nome: string;
+  papel: string;
+  email?: string | null;
+  tenantId?: string;
+  permissoes?: MapaPermissoes;
+};
 
 type AuthState = {
   carregando: boolean;

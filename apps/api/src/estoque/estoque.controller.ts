@@ -9,7 +9,7 @@ import {
   ListarEmprestimosQueryDto,
   PerdaDto,
 } from "./dto/emprestimo.dto";
-import { CurrentUsuario, Roles } from "../auth/decorators";
+import { CurrentUsuario, Permissao, Roles } from "../auth/decorators";
 
 // Estoque é operado por almoxarifado e admin (papéis atuais: só os dois).
 // MULTI-TENANT: o tenant NUNCA vem do cliente — é sempre u.tenantId, o
@@ -19,42 +19,53 @@ import { CurrentUsuario, Roles } from "../auth/decorators";
 export class EstoqueController {
   constructor(private readonly estoque: EstoqueService) {}
 
+  // Feed do console de movimentação → recurso "movimentacao".
+  @Permissao("movimentacao", "VER")
   @Get("produtos")
   listarProdutos(@CurrentUsuario() u: Usuario) {
     return this.estoque.listarProdutos(u.tenantId);
   }
 
+  @Permissao("historico", "VER")
   @Get("movimentacoes")
   listarMovimentacoes(@CurrentUsuario() u: Usuario, @Query("produtoId") produtoId?: string) {
     return this.estoque.listarMovimentacoes(u.tenantId, produtoId);
   }
 
+  @Permissao("movimentacao", "CRIAR")
   @Post("movimentacao")
   registrar(@Body() dto: MovimentacaoDto, @CurrentUsuario() u: Usuario) {
     return this.estoque.registrar(u.tenantId, dto, u.id);
   }
 
   // Status validado pelo DTO: valor fora do enum → 400 antes de tocar o banco.
+  @Permissao("pendencias", "VER")
   @Get("emprestimos")
   listarEmprestimos(@CurrentUsuario() u: Usuario, @Query() query: ListarEmprestimosQueryDto) {
     return this.estoque.listarEmprestimos(u.tenantId, query.status);
   }
 
+  // A retirada acontece no console → mesma permissão de movimentar.
+  @Permissao("movimentacao", "CRIAR")
   @Post("emprestimo")
   emprestar(@Body() dto: EmprestimoDto, @CurrentUsuario() u: Usuario) {
     return this.estoque.registrarEmprestimo(u.tenantId, dto, u.id);
   }
 
+  // Devolução/perda fecham pendências → editar "pendencias".
+  @Permissao("pendencias", "EDITAR")
   @Post("emprestimo/:id/devolucao")
   devolver(@Param("id") id: string, @Body() dto: DevolucaoDto, @CurrentUsuario() u: Usuario) {
     return this.estoque.registrarDevolucao(u.tenantId, id, dto, u.id);
   }
 
+  @Permissao("pendencias", "EDITAR")
   @Post("emprestimo/:id/perda")
   perder(@Param("id") id: string, @Body() dto: PerdaDto, @CurrentUsuario() u: Usuario) {
     return this.estoque.registrarPerda(u.tenantId, id, dto, u.id);
   }
 
+  // Sem @Permissao: os dois papéis exibem o prazo vigente na UI.
   @Get("config")
   getConfig(@CurrentUsuario() u: Usuario) {
     return this.estoque.getConfig(u.tenantId);

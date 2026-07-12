@@ -5,7 +5,7 @@ import { PartialType } from "@nestjs/mapped-types";
 import type { Usuario } from "@lf/db";
 import { PrismaService } from "../prisma/prisma.service";
 import { CrudService } from "../common/crud.service";
-import { CurrentUsuario, Roles } from "../auth/decorators";
+import { CurrentUsuario, Permissao, Roles } from "../auth/decorators";
 
 enum StatusOS {
   RECEBIDO = "RECEBIDO",
@@ -44,10 +44,11 @@ class OrdensService extends CrudService<unknown> {
 @Controller("ordens")
 class OrdensController {
   constructor(private readonly s: OrdensService) {}
-  @Get() list(@CurrentUsuario() u: Usuario) { return this.s.list(u.tenantId); }
-  @Get(":id") get(@CurrentUsuario() u: Usuario, @Param("id") id: string) { return this.s.get(u.tenantId, id); }
-  @Post() create(@CurrentUsuario() u: Usuario, @Body() dto: CreateOrdemDto) { return this.s.create(u.tenantId, dto); }
-  @Patch(":id") update(@CurrentUsuario() u: Usuario, @Param("id") id: string, @Body() dto: UpdateOrdemDto) { return this.s.update(u.tenantId, id, dto); }
+  // Recurso "movimentacao": as OS aqui são apoio ao console de saída.
+  @Permissao("movimentacao", "VER") @Get() list(@CurrentUsuario() u: Usuario) { return this.s.list(u.tenantId); }
+  @Permissao("movimentacao", "VER") @Get(":id") get(@CurrentUsuario() u: Usuario, @Param("id") id: string) { return this.s.get(u.tenantId, id); }
+  @Permissao("movimentacao", "CRIAR") @Post() create(@CurrentUsuario() u: Usuario, @Body() dto: CreateOrdemDto) { return this.s.create(u.tenantId, dto); }
+  @Permissao("movimentacao", "EDITAR") @Patch(":id") update(@CurrentUsuario() u: Usuario, @Param("id") id: string, @Body() dto: UpdateOrdemDto) { return this.s.update(u.tenantId, id, dto); }
 }
 
 @Module({ controllers: [OrdensController], providers: [OrdensService] })
